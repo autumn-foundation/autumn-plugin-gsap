@@ -1,0 +1,24 @@
+/* autumn-plugin-gsap default styles.
+ *
+ * Add with `gsap_stylesheet()`. Only `Gsap::scroll_progress()` needs this file.
+ * init.js sets `scaleX` from 0 to 1 while the page scrolls.
+ */
+.gsap-progress {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    z-index: 9999;
+    pointer-events: none;
+    background: #88ce02;
+    transform-origin: 0 50%;
+    transform: scaleX(0);
+}
+
+/* init.js does not animate the bar for reduced motion. Do not show an empty bar. */
+@media (prefers-reduced-motion: reduce) {
+    .gsap-progress {
+        display: none;
+    }
+}
