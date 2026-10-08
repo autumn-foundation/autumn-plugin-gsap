@@ -1,8 +1,6 @@
-/* autumn-plugin-gsap default styles.
- *
- * Add with `gsap_stylesheet()`. Only `Gsap::scroll_progress()` needs this file.
- * init.js sets `scaleX` from 0 to 1 while the page scrolls.
- */
+/* autumn-plugin-gsap default styles. Add them with `gsap_stylesheet()`. */
+
+/* The scroll progress bar. init.js sets `scaleX` from 0 to 1 while the page scrolls. */
 .gsap-progress {
     position: fixed;
     top: 0;
@@ -21,4 +19,22 @@
     .gsap-progress {
         display: none;
     }
+}
+
+/* Print all content. A reveal that did not play keeps opacity 0 in its inline style. */
+@media print {
+    [data-gsap-init],
+    [data-gsap-init] * {
+        opacity: 1 !important;
+        visibility: visible !important;
+        filter: none !important;
+    }
+}
+
+/* A split mask clips its text. Add space, so the mask does not cut descenders (g, p, y). */
+.gsap-char-mask,
+.gsap-word-mask,
+.gsap-line-mask {
+    padding-block: 0.15em;
+    margin-block: -0.15em;
 }

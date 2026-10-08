@@ -139,8 +139,15 @@ describe("default CSP", () => {
       "#hero, #hero [data-gsap]",
       (els) => els.every((el) => el.hasAttribute("data-gsap-init")),
     );
-    assert.ok(marked, "timeline and steps are marked");
-    await waitOpaque(page, "#lede");
+    assert.ok(marked, "init.js marks the timeline and steps");
+    // The lede paragraphs start hidden and play after the heading (a timeline, not in parallel).
+    const early = await page.evaluate(() => ({
+      lede: Number(getComputedStyle(document.querySelector("#lede p")).opacity),
+      start: window.gsap.getTweensOf(document.querySelectorAll("#lede p"))[0].startTime(),
+    }));
+    assert.ok(early.lede < 0.05, `lede starts hidden: ${early.lede}`);
+    assert.ok(early.start > 0.3, `lede starts after the heading: ${early.start}`);
+    await waitOpaque(page, "#lede p:last-child");
     await context.close();
   });
 
@@ -152,6 +159,11 @@ describe("default CSP", () => {
       parts: el.querySelectorAll("[aria-hidden=true]").length,
     }));
     assert.equal(split.tag, "H1");
+    const charOpacity = await page.$eval(
+      "#split .gsap-char",
+      (el) => Number(getComputedStyle(el).opacity) + Number(window.gsap.getProperty(el, "yPercent")),
+    );
+    assert.ok(charOpacity !== 1, "the chars animate");
     assert.equal(split.label, "Server HTML, GSAP motion.");
     assert.ok(split.parts >= 20, `chars are split: ${split.parts}`);
     await context.close();
@@ -159,7 +171,21 @@ describe("default CSP", () => {
 
   test("a card is hidden below the fold and reveals on scroll", async () => {
     const { page, context } = await open(url);
-    assert.ok((await opacity(page, "#card-fade-up")) < 0.05);
+    for (const sel of ["#card-fade-up", "#card-custom", "#card-raw"]) {
+      assert.ok((await opacity(page, sel)) < 0.05, `${sel} starts hidden`);
+    }
+    const vars = await page.evaluate(() => {
+      const st = window.ScrollTrigger.getAll().find((t) => t.trigger.id === "card-fade-up");
+      const chips = window.gsap.getTweensOf(document.querySelectorAll("#chips li"))[0];
+      return {
+        once: st.vars.once,
+        clamped: st.start < window.ScrollTrigger.maxScroll(window),
+        each: chips.vars.stagger.each,
+      };
+    });
+    assert.equal(vars.once, true, "plays one time by default");
+    assert.equal(vars.clamped, true, "the default start is before the page end");
+    assert.equal(vars.each, 0.08);
     await scrollTo(page, "#card-fade-up");
     await waitOpaque(page, "#card-fade-up");
     await scrollTo(page, "#card-custom");
@@ -205,10 +231,19 @@ describe("default CSP", () => {
   test("htmx content animates and removed content is reverted", async () => {
     const { page, context, errors } = await open(url);
     await scrollTo(page, "#htmx");
+    await page.evaluate(() => {
+      window.__refresh = 0;
+      const real = window.ScrollTrigger.refresh;
+      window.ScrollTrigger.refresh = function (...args) {
+        window.__refresh += 1;
+        return real.apply(this, args);
+      };
+    });
     await page.click("#load-more");
     // htmx fires htmx:load after its settle delay, so wait for the marks first.
     await page.waitForSelector(".more-item:nth-child(3)[data-gsap-init]");
     await waitOpaque(page, ".more-item:last-child");
+    await page.waitForFunction(() => window.__refresh > 0);
 
     for (let i = 0; i < 3; i++) {
       await scrollTo(page, "#swap");
@@ -247,6 +282,265 @@ describe("default CSP", () => {
     assert.deepEqual(result, { scanned: 3, again: 0, reverted: 3, marked: 0 });
     assert.ok(warnings.some((w) => w.includes("data-gsap-ease nope")), warnings.join("\n"));
     assert.ok(warnings.some((w) => w.includes("data-gsap bogus")), warnings.join("\n"));
+    await context.close();
+  });
+});
+
+// Adds `html` to the page, scans it, and waits `ms`.
+async function inject(page, html, ms = 0) {
+  await page.evaluate((h) => {
+    const box = document.createElement("div");
+    box.id = "probe";
+    box.innerHTML = h;
+    document.body.prepend(box);
+    window.AutumnGsap.scan(box);
+  }, html);
+  if (ms) await page.waitForTimeout(ms);
+}
+
+describe("runtime edge cases", () => {
+  test("blur-in and flip-x end at their CSS state", async () => {
+    const { page, context } = await open(url);
+    await inject(
+      page,
+      '<p id="blur" data-gsap="blur-in" data-gsap-on="load" data-gsap-duration="0.2">a</p>' +
+        '<div id="flip" style="height:400px" data-gsap="flip-x" data-gsap-on="load" ' +
+        'data-gsap-duration="0.4">b</div>',
+    );
+    // In the middle of the flip, the perspective stays 600px.
+    await page.waitForTimeout(200);
+    const mid = await page.$eval("#flip", (el) => getComputedStyle(el).transform);
+    await page.waitForTimeout(400);
+    const end = await page.evaluate(() => ({
+      blur: getComputedStyle(document.querySelector("#blur")).opacity,
+      flip: getComputedStyle(document.querySelector("#flip")).opacity,
+      height: Math.round(document.querySelector("#flip").getBoundingClientRect().height),
+    }));
+    assert.deepEqual(end, { blur: "1", flip: "1", height: 400 });
+    assert.ok(!/perspective\((?!600px)/.test(mid), mid);
+    await context.close();
+  });
+
+  test("split chars do not break a word at a line wrap", async () => {
+    const { page, context } = await open(url, { viewport: { width: 360, height: 800 } });
+    await page.waitForTimeout(100);
+    const broken = await page.$eval("#split", (el) => {
+      // Walk the text nodes in order. Two chars with no space between them are one word.
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let prev = null;
+      let count = 0;
+      for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+        if (!/\S/.test(n.textContent)) {
+          prev = null;
+          continue;
+        }
+        const top = n.parentElement.getBoundingClientRect().top;
+        if (prev !== null && top > prev + 5) count += 1;
+        prev = top;
+      }
+      return count;
+    });
+    assert.equal(broken, 0);
+    await context.close();
+  });
+
+  test("a pin without scrub pins again after the first pass", async () => {
+    const { page, context } = await open(url);
+    await page.evaluate(() => {
+      const box = document.createElement("section");
+      box.id = "pinbox";
+      box.style.height = "300px";
+      box.setAttribute("data-gsap", "fade");
+      box.setAttribute("data-gsap-pin", "");
+      box.setAttribute("data-gsap-start", "top top");
+      box.setAttribute("data-gsap-end", "+=600");
+      document.querySelector("#htmx").before(box);
+      window.AutumnGsap.scan(box);
+      window.ScrollTrigger.refresh();
+    });
+    const top = () => page.$eval("#pinbox", (el) => Math.round(el.getBoundingClientRect().top));
+    const start = await page.evaluate(
+      () => window.ScrollTrigger.getAll().find((s) => s.trigger.id === "pinbox").start,
+    );
+    for (const y of [start + 300, start + 1200, start + 300]) {
+      await page.evaluate((v) => window.scrollTo(0, v), y);
+      await page.waitForTimeout(150);
+    }
+    assert.equal(await top(), 0, "pinned on the second pass");
+    await context.close();
+  });
+
+  test("htmx swaps that remove a pinned element work", async () => {
+    const { page, context, errors } = await open(url);
+    const swapErrors = [];
+    await page.exposeFunction("swapError", (m) => swapErrors.push(m));
+    await page.evaluate(() => {
+      document.body.addEventListener("htmx:swapError", (e) => window.swapError(String(e.detail.error)));
+      const box = document.createElement("div");
+      box.id = "pinhost";
+      box.innerHTML =
+        '<section id="pinned-a" style="height:200px" data-gsap="fade" data-gsap-pin ' +
+        'data-gsap-on="scroll" data-gsap-start="top top" data-gsap-end="+=300">a</section>';
+      document.querySelector("#htmx").before(box);
+      const outer = document.createElement("section");
+      outer.id = "pinned-b";
+      outer.style.height = "200px";
+      outer.setAttribute("data-gsap", "fade");
+      outer.setAttribute("data-gsap-pin", "");
+      outer.setAttribute("data-gsap-start", "top top");
+      outer.setAttribute("data-gsap-end", "+=300");
+      document.querySelector("#htmx").before(outer);
+      window.AutumnGsap.scan(box);
+      window.AutumnGsap.scan(outer);
+      const b1 = document.createElement("button");
+      b1.id = "swap-inner";
+      b1.setAttribute("hx-get", "/swap");
+      b1.setAttribute("hx-target", "#pinhost");
+      b1.setAttribute("hx-swap", "innerHTML");
+      const b2 = document.createElement("button");
+      b2.id = "swap-outer";
+      b2.setAttribute("hx-get", "/swap");
+      b2.setAttribute("hx-target", "#pinned-b");
+      b2.setAttribute("hx-swap", "outerHTML");
+      document.body.prepend(b1, b2);
+      window.htmx.process(b1);
+      window.htmx.process(b2);
+    });
+    assert.equal(await page.locator(".pin-spacer").count(), 3);
+    await page.click("#swap-inner");
+    await page.waitForSelector("#pinhost .swap-item");
+    await page.click("#swap-outer");
+    await page.waitForFunction(() => !document.querySelector("#pinned-b"));
+    await page.waitForTimeout(200);
+    const state = await page.evaluate(() => ({
+      oldA: !!document.querySelector("#pinned-a"),
+      hostItems: document.querySelectorAll("#pinhost .swap-item").length,
+      outerItems: document.querySelectorAll(".swap-item").length,
+      spacers: document.querySelectorAll(".pin-spacer").length,
+    }));
+    assert.deepEqual(swapErrors, []);
+    assert.deepEqual(state, { oldA: false, hostItems: 3, outerItems: 9, spacers: 1 });
+    assert.equal(await detached(page), 0);
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  test("htmx history restore animates the content again", async () => {
+    const { page, context, errors } = await open(url);
+    await page.click("#about-link");
+    await page.waitForSelector("#about[data-gsap-init]");
+    await page.goBack();
+    await page.waitForSelector("#card-fade-up");
+    await page.waitForTimeout(200);
+    await scrollTo(page, "#card-fade-up");
+    await waitOpaque(page, "#card-fade-up");
+    const state = await page.evaluate(() => ({
+      spacers: document.querySelectorAll(".pin-spacer").length,
+      chars: document.querySelector("#split").querySelectorAll("[aria-hidden=true]").length > 0,
+    }));
+    assert.deepEqual(state, { spacers: 1, chars: true });
+    assert.equal(await detached(page), 0);
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  test("an error in one element does not leave the GSAP context open", async () => {
+    const { page, context } = await open(url);
+    const state = await page.evaluate(() => {
+      const box = document.createElement("div");
+      box.innerHTML = '<p id="bad" data-gsap="fade" data-gsap-on="load">x</p>';
+      document.body.appendChild(box);
+      const real = window.gsap.from;
+      window.gsap.from = () => {
+        throw new Error("boom");
+      };
+      const n = window.AutumnGsap.scan(box);
+      window.gsap.from = real;
+      return {
+        n,
+        marked: document.querySelector("#bad").hasAttribute("data-gsap-init"),
+        context: !!window.gsap.core.context(),
+      };
+    });
+    assert.deepEqual(state, { n: 0, marked: false, context: false });
+    await context.close();
+  });
+});
+
+describe("accessibility and layout", () => {
+  test("an element below the reveal line at the page end appears", async () => {
+    const { page, context } = await open(url);
+    await page.evaluate(() => {
+      const p = document.createElement("p");
+      p.id = "last";
+      p.textContent = "The end.";
+      p.setAttribute("data-gsap", "fade");
+      document.body.appendChild(p);
+      window.AutumnGsap.scan(p);
+      window.ScrollTrigger.refresh();
+      window.scrollTo(0, document.documentElement.scrollHeight);
+    });
+    await waitOpaque(page, "#last");
+    await context.close();
+  });
+
+  test("print shows all content", async () => {
+    const { page, context } = await open(url);
+    await page.emulateMedia({ media: "print" });
+    const hidden = await page.$$eval("[data-gsap-init], [data-gsap-init] *", (els) =>
+      els.filter((el) => Number(getComputedStyle(el).opacity) < 1).map((el) => el.id || el.className),
+    );
+    assert.deepEqual(hidden, []);
+    await context.close();
+  });
+
+  test("split text with a link keeps the link readable", async () => {
+    const { page, context, warnings } = await open(url);
+    await inject(
+      page,
+      '<p id="lnk" data-gsap="fade" data-gsap-split="words" data-gsap-on="load">' +
+        'Read the <a href="#x">install guide</a> now.</p>',
+    );
+    const state = await page.$eval("#lnk", (el) => ({
+      hidden: el.querySelectorAll("[aria-hidden]").length,
+      link: el.querySelector("a").textContent,
+      marked: el.hasAttribute("data-gsap-init"),
+    }));
+    assert.deepEqual(state, { hidden: 0, link: "install guide", marked: true });
+    assert.ok(warnings.some((w) => w.includes("data-gsap-split")), warnings.join("\n"));
+    await context.close();
+  });
+
+  test("the split mask does not clip descenders", async () => {
+    const { page, context } = await open(url);
+    const pad = await page.$eval("#split .gsap-char-mask", (el) => parseFloat(getComputedStyle(el).paddingBottom));
+    assert.ok(pad > 0, `mask padding: ${pad}`);
+    await context.close();
+  });
+
+  test("a reduced-motion change after load reverts, then starts again", async () => {
+    const { page, context, errors } = await open(url);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.waitForFunction(() => document.querySelectorAll("[data-gsap-init]").length === 0);
+    assert.equal(await opacity(page, "#card-fade-up"), 1);
+    assert.equal(await page.locator(".pin-spacer").count(), 0);
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.waitForSelector("#card-fade-up[data-gsap-init]");
+    assert.equal(await page.locator(".pin-spacer").count(), 1);
+    assert.deepEqual(errors, []);
+    await context.close();
+  });
+
+  test("a reload keeps the scroll position below a pin", async () => {
+    const { page, context } = await open(url);
+    await scrollTo(page, "#htmx");
+    await page.waitForTimeout(100);
+    const before = await page.$eval("#htmx", (el) => Math.round(el.getBoundingClientRect().top));
+    await page.reload();
+    await page.waitForFunction(() => window.AutumnGsap && window.htmx);
+    await page.waitForTimeout(300);
+    const after = await page.$eval("#htmx", (el) => Math.round(el.getBoundingClientRect().top));
+    assert.ok(Math.abs(after - before) < 50, `before ${before}, after ${after}`);
     await context.close();
   });
 });

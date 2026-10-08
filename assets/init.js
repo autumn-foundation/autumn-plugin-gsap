@@ -17,6 +17,7 @@
     var TIMELINE_SEL = "[" + TIMELINE + "]";
     // Regions that never animate. `hx-disable` is the htmx marker for untrusted content.
     var IGNORE_SEL = "[data-gsap-ignore],[hx-disable],[data-hx-disable]";
+    var INTERACTIVE_SEL = "a,button,input,select,textarea,[tabindex],[contenteditable]";
 
     // Value grammar. Keep these lines equal to src/grammar.rs (a Rust test checks it).
     var RE_SECS = /^(\d+(\.\d+)?)$/;
@@ -63,8 +64,13 @@
         "blur-in": { opacity: 0, filter: "blur(12px)" },
         "flip-x": { opacity: 0, rotationX: -90, transformPerspective: 600, transformOrigin: "50% 0%" },
     };
-    // End states for presets that GSAP cannot read from CSS.
-    var PRESET_ENDS = { "blur-in": { filter: "blur(0px)" } };
+    // End states for presets that need `fromTo`. GSAP animates only the properties
+    // in the end state, so each end state lists every property of its start state.
+    var PRESET_ENDS = {
+        "blur-in": { opacity: 1, filter: "blur(0px)" },
+        // Keep the perspective and origin constant. A `from` would animate them to 0.
+        "flip-x": { opacity: 1, rotationX: 0, transformPerspective: 600, transformOrigin: "50% 0%" },
+    };
     var SPECIAL = ["custom", "parallax", "scroll-progress"];
     var KINDS = Object.keys(PRESETS).concat(SPECIAL);
 
@@ -310,6 +316,17 @@
         return el;
     }
 
+    // The default start: `top 85%`, but never after the last scroll position.
+    // Without the clamp, an element near the page end never plays and stays hidden.
+    function defaultStart(trigger) {
+        return function () {
+            var top = trigger.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.85;
+            var ST = window.ScrollTrigger;
+            var max = ST && typeof ST.maxScroll === "function" ? ST.maxScroll(window) : top + 1;
+            return Math.min(top, max - 1);
+        };
+    }
+
     // The ScrollTrigger vars, or null when the element plays on load.
     function scrollTrigger(el) {
         if (read(el, "data-gsap-on") === "load") {
@@ -319,12 +336,13 @@
         var start = read(el, "data-gsap-start");
         var end = read(el, "data-gsap-end");
         var scrubV = read(el, "data-gsap-scrub");
+        var pin = read(el, "data-gsap-pin");
         if (scrubV !== null) {
             st.scrub = scrubV;
             st.start = start || DEFAULTS.scrubStart;
             st.end = end || DEFAULTS.scrubEnd;
         } else {
-            st.start = start || DEFAULTS.start;
+            st.start = start || defaultStart(st.trigger);
             if (end) {
                 st.end = end;
             }
@@ -334,11 +352,12 @@
                 st.toggleActions = actions;
             } else if (onceV === false) {
                 st.toggleActions = "play none none reverse";
-            } else {
+            } else if (!pin) {
+                // A pin must stay alive. With `once`, the trigger dies and leaves an empty gap.
                 st.once = true;
             }
         }
-        if (read(el, "data-gsap-pin")) {
+        if (pin) {
             // Pin only the element or an element in it. Do not move other page content.
             if (st.trigger === el || el.contains(st.trigger)) {
                 st.pin = true;
@@ -365,8 +384,21 @@
     // The tween targets: split text units, direct children (stagger) or the element.
     function targets(el, rec) {
         var unit = read(el, "data-gsap-split");
+        if (unit !== null && el.querySelector(INTERACTIVE_SEL)) {
+            // SplitText hides the parts from screen readers. A link or control in them
+            // loses its name, so animate the element as a whole.
+            warn(el, "data-gsap-split", "skipped: the text contains links or controls");
+            unit = null;
+        }
         if (unit !== null && typeof window.SplitText === "function") {
-            var opts = { type: unit, aria: "auto" };
+            // Split chars inside words, so a line wrap never breaks a word.
+            var opts = {
+                type: unit === "chars" ? "words,chars" : unit,
+                aria: "auto",
+                charsClass: "gsap-char",
+                wordsClass: "gsap-word",
+                linesClass: "gsap-line",
+            };
             if (read(el, "data-gsap-split-mask")) {
                 opts.mask = unit;
             }
@@ -546,17 +578,28 @@
 
     function start(gsap, el, fn) {
         var rec = { claimed: [el], ctx: null };
+        var failed = null;
         el.setAttribute(INIT, "true");
-        try {
-            rec.ctx = gsap.context(function () {
+        // Catch inside the context function. GSAP closes the context only when it returns.
+        rec.ctx = gsap.context(function () {
+            try {
                 fn(gsap, el, rec);
+            } catch (e) {
+                failed = e;
+            }
+        });
+        if (failed !== null) {
+            warn(el, "data-gsap", String(failed && failed.message ? failed.message : failed));
+            rec.ctx.revert();
+            rec.claimed.forEach(function (c) {
+                c.removeAttribute(INIT);
             });
-        } catch (e) {
-            warn(el, "data-gsap", String(e && e.message ? e.message : e));
+            return false;
         }
-        if (RECORDS && rec.ctx) {
+        if (RECORDS) {
             RECORDS.set(el, rec);
         }
+        return true;
     }
 
     function optedIn(el) {
@@ -593,8 +636,9 @@
             if (box.hasAttribute(INIT) || ignored(box) || (reduce && !optedIn(box))) {
                 return;
             }
-            start(gsap, box, animateTimeline);
-            count += 1;
+            if (start(gsap, box, animateTimeline)) {
+                count += 1;
+            }
         });
         collect(scope, "[data-gsap]").forEach(function (el) {
             if (
@@ -605,9 +649,13 @@
             ) {
                 return;
             }
-            start(gsap, el, animateElement);
-            count += 1;
+            if (start(gsap, el, animateElement)) {
+                count += 1;
+            }
         });
+        if (count > 0) {
+            dirty = true;
+        }
         return count;
     }
 
@@ -633,15 +681,21 @@
                 count += 1;
             }
         });
+        if (count > 0) {
+            dirty = true;
+        }
         return count;
     }
 
     var refreshTimer = null;
+    // `true` after a scan or revert changed something. Only then is a refresh necessary.
+    var dirty = false;
 
     function refreshSoon() {
-        if (typeof window.ScrollTrigger !== "function") {
+        if (typeof window.ScrollTrigger !== "function" || !dirty) {
             return;
         }
+        dirty = false;
         clearTimeout(refreshTimer);
         refreshTimer = setTimeout(function () {
             window.ScrollTrigger.refresh();
@@ -685,11 +739,114 @@
     });
     document.addEventListener("htmx:afterSettle", refreshSoon);
 
-    if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", function () {
-            scan(document);
-        });
-    } else {
+    // Revert before htmx changes the DOM. A pin revert moves its element out of the pin
+    // spacer, so it must not happen during the swap. Scan the target again after the swap.
+    var swapped = typeof WeakSet === "function" ? new WeakSet() : null;
+
+    function beforeSwap(e) {
+        var target = e.detail && e.detail.target;
+        if (!target || (e.detail.shouldSwap === false) || !target.querySelectorAll) {
+            return;
+        }
+        if (revert(target) > 0 && swapped) {
+            swapped.add(target);
+        }
+    }
+
+    function afterSwap(e) {
+        var target = e.detail && e.detail.target;
+        if (target && swapped && swapped.has(target)) {
+            swapped.delete(target);
+            if (target.isConnected) {
+                scan(target);
+            }
+        }
+    }
+
+    document.addEventListener("htmx:beforeSwap", beforeSwap);
+    document.addEventListener("htmx:oobBeforeSwap", beforeSwap);
+    document.addEventListener("htmx:afterSwap", afterSwap);
+    document.addEventListener("htmx:oobAfterSwap", afterSwap);
+
+    // htmx saves the live DOM for the Back button. Save it without GSAP state
+    // (inline styles, split text, pin spacers), then start the animations again.
+    document.addEventListener("htmx:beforeHistorySave", function (e) {
+        var elt = (e.detail && e.detail.historyElt) || document.body;
+        revert(elt);
+        setTimeout(function () {
+            scan(elt);
+        }, 0);
+    });
+
+    // A reduced-motion change after load: revert the animations (content stays visible),
+    // or start them again.
+    if (typeof window.matchMedia === "function") {
+        var mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+        var onMotionChange = function () {
+            if (mq.matches) {
+                collect(document, "[" + INIT + "]").forEach(function (el) {
+                    if (!optedIn(el) && release(el)) {
+                        dirty = true;
+                    }
+                });
+                refreshSoon();
+            } else {
+                scan(document);
+                refreshSoon();
+            }
+        };
+        if (typeof mq.addEventListener === "function") {
+            mq.addEventListener("change", onMotionChange);
+        }
+    }
+
+    // A pin adds height after the browser restores the scroll position on reload.
+    // Keep the position in sessionStorage and set it again after the first scan.
+    var SCROLL_KEY = "autumn-gsap-scroll:" + location.pathname;
+
+    function storage() {
+        try {
+            return window.sessionStorage;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    window.addEventListener("pagehide", function () {
+        var s = storage();
+        if (s) {
+            try {
+                s.setItem(SCROLL_KEY, String(window.scrollY));
+            } catch (e) {
+                // Storage is full or blocked. The browser restores the position.
+            }
+        }
+    });
+
+    function restoreScroll() {
+        var s = storage();
+        var nav = window.performance && performance.getEntriesByType
+            ? performance.getEntriesByType("navigation")[0]
+            : null;
+        var saved = s ? s.getItem(SCROLL_KEY) : null;
+        if (!nav || nav.type !== "reload" || saved === null || location.hash) {
+            return;
+        }
+        var y = parseFloat(saved);
+        if (isFinite(y) && typeof window.ScrollTrigger === "function") {
+            window.ScrollTrigger.refresh();
+            window.scrollTo(0, y);
+        }
+    }
+
+    function boot() {
         scan(document);
+        restoreScroll();
+    }
+
+    if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", boot);
+    } else {
+        boot();
     }
 })();

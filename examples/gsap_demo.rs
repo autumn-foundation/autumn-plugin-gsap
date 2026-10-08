@@ -42,7 +42,7 @@ async fn main() {
     autumn_web::app()
         .plugin(GsapPlugin::new())
         .embedded_static(&STATIC)
-        .routes(autumn_web::routes![index, more, swap])
+        .routes(autumn_web::routes![index, about, more, swap])
         .run()
         .await;
 }
@@ -176,7 +176,10 @@ async fn index() -> Markup {
             div id="more" {}
             div id="swap" { (swap_panel(0)) }
         }
-        footer { "End." }
+        footer {
+            // A boosted link: htmx saves this page in its history cache. Back restores it.
+            a href="/about" hx-boost="true" id="about-link" { "About" }
+        }
     })
 }
 
@@ -191,6 +194,15 @@ fn swap_panel(n: u32) -> Markup {
                 div class="item swap-item" { "Panel " (n) " · item " (i) }
             }
         })
+}
+
+/// A second page for the htmx history test.
+#[autumn_web::get("/about")]
+async fn about() -> Markup {
+    layout(&html! {
+        (Gsap::fade_up().play(Play::Load).id("about").wrap_in(Tag::H1, html! { "About" }))
+        a href="/" hx-boost="true" { "Back to the demo" }
+    })
 }
 
 /// htmx partial: one more batch. It is a stagger container.
