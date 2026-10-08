@@ -15,6 +15,8 @@
     var INIT = "data-gsap-init";
     var TIMELINE = "data-gsap-timeline";
     var TIMELINE_SEL = "[" + TIMELINE + "]";
+    // Regions that never animate. `hx-disable` is the htmx marker for untrusted content.
+    var IGNORE_SEL = "[data-gsap-ignore],[hx-disable],[data-hx-disable]";
 
     // Value grammar. Keep these lines equal to src/grammar.rs (a Rust test checks it).
     var RE_SECS = /^(\d+(\.\d+)?)$/;
@@ -222,7 +224,8 @@
 
     function warn(el, name, raw) {
         if (typeof console !== "undefined" && console.warn) {
-            console.warn("[autumn-plugin-gsap] ignored " + name + '="' + raw + '"', el);
+            // Format arguments, so a value cannot inject console format codes.
+            console.warn('[autumn-plugin-gsap] ignored %s="%s"', name, String(raw), el);
         }
     }
 
@@ -336,7 +339,12 @@
             }
         }
         if (read(el, "data-gsap-pin")) {
-            st.pin = true;
+            // Pin only the element or an element in it. Do not move other page content.
+            if (st.trigger === el || el.contains(st.trigger)) {
+                st.pin = true;
+            } else {
+                warn(el, "data-gsap-pin", "the trigger is outside the element");
+            }
         }
         if (read(el, "data-gsap-markers")) {
             st.markers = true;
@@ -357,7 +365,7 @@
     // The tween targets: split text units, direct children (stagger) or the element.
     function targets(el, rec) {
         var unit = read(el, "data-gsap-split");
-        if (unit !== null && window.SplitText) {
+        if (unit !== null && typeof window.SplitText === "function") {
             var opts = { type: unit, aria: "auto" };
             if (read(el, "data-gsap-split-mask")) {
                 opts.mask = unit;
@@ -492,7 +500,7 @@
         var found = box.querySelectorAll("[data-gsap]");
         for (var i = 0; i < found.length; i++) {
             var child = found[i];
-            if (child.hasAttribute(INIT) || child.closest(TIMELINE_SEL) !== box) {
+            if (child.hasAttribute(INIT) || child.closest(TIMELINE_SEL) !== box || ignored(child)) {
                 continue;
             }
             child.setAttribute(INIT, "true");
@@ -527,7 +535,10 @@
             return;
         }
         registered = true;
-        var plugins = [window.ScrollTrigger, window.SplitText].filter(Boolean);
+        // `typeof` checks: an element with id="SplitText" must not count as the plugin.
+        var plugins = [window.ScrollTrigger, window.SplitText].filter(function (p) {
+            return typeof p === "function";
+        });
         if (plugins.length) {
             gsap.registerPlugin.apply(gsap, plugins);
         }
@@ -552,6 +563,10 @@
         return read(el, "data-gsap-reduced") === "animate";
     }
 
+    function ignored(el) {
+        return el.closest(IGNORE_SEL) !== null;
+    }
+
     function collect(scope, sel) {
         var out = [];
         if (scope !== document && scope.matches && scope.matches(sel)) {
@@ -567,7 +582,7 @@
     /** Scans `root` (default: the document). Returns the number of new animations. */
     function scan(root) {
         var gsap = window.gsap;
-        if (!gsap) {
+        if (!gsap || typeof gsap.context !== "function") {
             return 0;
         }
         register(gsap);
@@ -575,14 +590,19 @@
         var reduce = reducedMotion();
         var count = 0;
         collect(scope, TIMELINE_SEL).forEach(function (box) {
-            if (box.hasAttribute(INIT) || (reduce && !optedIn(box))) {
+            if (box.hasAttribute(INIT) || ignored(box) || (reduce && !optedIn(box))) {
                 return;
             }
             start(gsap, box, animateTimeline);
             count += 1;
         });
         collect(scope, "[data-gsap]").forEach(function (el) {
-            if (el.hasAttribute(INIT) || el.closest(TIMELINE_SEL) || (reduce && !optedIn(el))) {
+            if (
+                el.hasAttribute(INIT) ||
+                el.closest(TIMELINE_SEL) ||
+                ignored(el) ||
+                (reduce && !optedIn(el))
+            ) {
                 return;
             }
             start(gsap, el, animateElement);
@@ -619,7 +639,7 @@
     var refreshTimer = null;
 
     function refreshSoon() {
-        if (!window.ScrollTrigger) {
+        if (typeof window.ScrollTrigger !== "function") {
             return;
         }
         clearTimeout(refreshTimer);

@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Autumn plugin: GSAP animations with typed Rust builders, ScrollTrigger, SplitText and htmx support."
-license = "Apache-2.0"
+# The plugin code is Apache-2.0. The vendored GSAP files use the GSAP Standard License.
+license = "Apache-2.0 AND LicenseRef-GSAP-Standard-License"
 repository = "https://github.com/autumn-foundation/autumn-plugin-gsap"
 readme = "README.md"
 keywords = ["autumn", "gsap", "animation", "htmx", "plugin"]

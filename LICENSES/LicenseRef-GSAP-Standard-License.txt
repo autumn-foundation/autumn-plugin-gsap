@@ -1,0 +1,23 @@
+GSAP Standard "No Charge" License
+=================================
+
+Applies to these vendored files, which are not changed:
+
+- assets/gsap.min.js
+- assets/ScrollTrigger.min.js
+- assets/SplitText.min.js
+
+Copyright (c) 2008-2026, GreenSock. All rights reserved.
+
+The full and current terms are at: https://gsap.com/standard-license
+Read the full terms before you use or distribute these files.
+
+Summary (not the license, not legal advice):
+
+- You can use GSAP at no charge, also in commercial products.
+- You must not use GSAP in tools that let users build visual animations
+  with no code, if these tools compete with Webflow ("Prohibited Uses").
+- You must not remove or change the proprietary notices in the files.
+- Webflow can change the terms, and can end the license if you do not obey them.
+
+The plugin code in this crate (all other files) uses Apache-2.0. See LICENSE.

@@ -152,6 +152,7 @@ The builders write these attributes. You can also write them by hand.
 | `data-gsap-position` | `<`, `>`, `<0.2`, `+=0.5`, `-=0.2`, `1.5` | `>` |
 | `data-gsap-reduced` | `animate` | skip for reduced motion |
 | `data-gsap-timeline` | bare, on the timeline element | — |
+| `data-gsap-ignore` | bare, on a region that must not animate | — |
 
 `init.js` sets `data-gsap-init` on each element that it starts. A second scan skips these elements.
 
@@ -197,10 +198,23 @@ After a change to an attribute value, run `UPDATE_GOLDEN=1 cargo test --test gol
 - `lines` split happens one time, at scan. A resize does not split the lines again.
 - Until the deferred scripts run, the browser can show the end state for a short time.
 
+## Untrusted content
+
+`init.js` acts on each `data-gsap*` attribute on the page. User HTML can contain these attributes.
+For example, it can move an element over your own UI.
+
+- Remove `data-gsap*` attributes from user HTML when you sanitize it. (DOMPurify keeps `data-*` by default.)
+- Or put user HTML in an element with `data-gsap-ignore` or `hx-disable`. `init.js` does not animate in these regions.
+- `data-gsap-pin` pins only the element or an element in it. A pin of another element is refused.
+- Do not use SplitText on untrusted rich HTML. A revert parses the saved HTML again.
+
 ## License
 
+- The crate license expression is `Apache-2.0 AND LicenseRef-GSAP-Standard-License`.
+  If you use `cargo-deny`, add `LicenseRef-GSAP-Standard-License` to your allow list after you read the terms.
 - The plugin code: Apache-2.0 (see `LICENSE`).
 - The vendored GSAP files (`assets/gsap.min.js`, `assets/ScrollTrigger.min.js`, `assets/SplitText.min.js`):
   [GSAP Standard License](https://gsap.com/standard-license). GSAP is free, also for commercial use.
   The license does not permit tools that let users build visual animations with no code,
   if they compete with Webflow. Read the full terms before you use GSAP.
+  See `LICENSES/LicenseRef-GSAP-Standard-License.txt`.

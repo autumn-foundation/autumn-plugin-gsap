@@ -44,6 +44,7 @@ async function open(url, options = {}) {
   const page = await context.newPage();
   const errors = [];
   const warnings = [];
+  // Playwright gives the raw format string and arguments, joined by spaces.
   page.on("console", (m) => {
     if (m.type() === "error") errors.push(m.text());
     if (m.type() === "warning") warnings.push(m.text());
@@ -244,8 +245,38 @@ describe("default CSP", () => {
       };
     });
     assert.deepEqual(result, { scanned: 3, again: 0, reverted: 3, marked: 0 });
-    assert.ok(warnings.some((w) => w.includes('data-gsap-ease="nope"')), warnings.join("\n"));
-    assert.ok(warnings.some((w) => w.includes('data-gsap="bogus"')), warnings.join("\n"));
+    assert.ok(warnings.some((w) => w.includes("data-gsap-ease nope")), warnings.join("\n"));
+    assert.ok(warnings.some((w) => w.includes("data-gsap bogus")), warnings.join("\n"));
+    await context.close();
+  });
+});
+
+describe("untrusted content", () => {
+  test("ignored regions do not animate and a foreign pin is refused", async () => {
+    const { page, context, warnings } = await open(url);
+    const result = await page.evaluate(() => {
+      const victim = document.createElement("header");
+      victim.id = "victim";
+      document.body.prepend(victim);
+      const box = document.createElement("div");
+      box.innerHTML =
+        '<div data-gsap-ignore><p data-gsap="fade" data-gsap-on="load">a</p></div>' +
+        '<div hx-disable><p data-gsap="fade" data-gsap-on="load">b</p></div>' +
+        '<div data-gsap-ignore><div data-gsap-timeline data-gsap-on="load">' +
+        '<p data-gsap="fade">c</p></div></div>' +
+        '<p id="evil" data-gsap="fade" data-gsap-trigger="#victim" data-gsap-pin ' +
+        'data-gsap-end="+=9999">d</p>';
+      document.body.appendChild(box);
+      const scanned = window.AutumnGsap.scan(box);
+      return {
+        scanned,
+        marked: box.querySelectorAll("[data-gsap-init]").length,
+        victimParent: victim.parentElement.className,
+        victimPins: window.ScrollTrigger.getAll().filter((s) => s.pin === victim).length,
+      };
+    });
+    assert.deepEqual(result, { scanned: 1, marked: 1, victimParent: "", victimPins: 0 });
+    assert.ok(warnings.some((w) => w.includes("data-gsap-pin")), warnings.join("\n"));
     await context.close();
   });
 });
