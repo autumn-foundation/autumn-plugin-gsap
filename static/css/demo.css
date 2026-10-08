@@ -1,0 +1,29 @@
+/* Demo styles. A file, not inline: the Autumn CSP blocks inline styles in nonce mode. */
+* { box-sizing: border-box; }
+body { margin: 0; font-family: system-ui, sans-serif; color: #f4f1ea; background: #0e100f; }
+/* `overflow-x: clip` keeps x and xPercent start states from making the page wider. */
+.wrap { max-width: 760px; margin: 0 auto; padding: 0 24px; overflow-x: clip; }
+.hero { min-height: 92vh; display: flex; flex-direction: column; justify-content: center; }
+.hero h1 { font-size: 3.4rem; line-height: 1.05; margin: 0 0 16px; }
+.hero p { font-size: 1.2rem; color: #bbbaa6; margin: 4px 0; }
+.kicker { text-transform: uppercase; letter-spacing: .2em; font-size: .8rem; color: #88ce02; margin-bottom: 16px; }
+.art { height: 240px; border-radius: 24px; background: linear-gradient(135deg, #0ae448, #abff84 40%, #fffce1); }
+.cards { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px; padding: 120px 0; }
+.card { background: #1b1c1a; border: 1px solid #2f312d; border-radius: 14px; padding: 28px; }
+.card h2 { margin: 0 0 8px; }
+.card p { margin: 0; color: #bbbaa6; overflow-wrap: anywhere; }
+.chips { list-style: none; padding: 0; margin: 0; }
+/* Safari drops list semantics with list-style none. A zero-width marker keeps them. */
+.chips li::before { content: "\200B"; }
+.chip { display: inline-block; margin: 4px; padding: 8px 14px; border-radius: 999px; background: #2f312d; }
+.pinned { height: 100vh; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; }
+.band { font-size: 3rem; font-weight: 800; white-space: nowrap; color: #88ce02; }
+.orb { position: absolute; width: 180px; height: 180px; border-radius: 50%; background: #9d95ff; opacity: .3; z-index: -1; }
+.htmx-zone { padding: 120px 0; }
+.buttons { display: flex; gap: 12px; }
+.htmx-zone button { font-size: 1rem; padding: 12px 24px; border-radius: 999px; border: 0; background: #88ce02; color: #0e100f; font-weight: 700; cursor: pointer; }
+#more, #swap { display: grid; gap: 12px; margin-top: 24px; }
+.item { background: #1b1c1a; border: 1px solid #2f312d; border-radius: 10px; padding: 16px 20px; }
+.end { padding: 80px 0 120px; color: #a29d92; text-align: center; }
+footer { padding: 0 0 200px; text-align: center; }
+footer a { color: #abff84; }
