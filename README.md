@@ -114,6 +114,7 @@ Timeline::new().wrap_in(Tag::Section, html! {
 - Before an `outerHTML` or `delete` swap, it restores the target, so a pin spacer does not wrap the new content.
   If a later listener cancels the swap, `init.js` starts the target again.
 - After an `innerHTML` swap into a stagger, split or timeline container, it starts the container again.
+  For a split timeline step, it removes the old split label. The new text of the step does not animate.
 - Content that stays on the page (for example with `beforeend`) does not play again.
 - htmx keeps a copy of the page for the Back button. `init.js` removes the GSAP state from that copy only.
   The page on screen does not change. After Back, the restored content animates again.

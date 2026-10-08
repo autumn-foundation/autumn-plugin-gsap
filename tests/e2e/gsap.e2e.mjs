@@ -662,6 +662,90 @@ describe("htmx swaps keep played content", () => {
     await context.close();
   });
 
+  for (const push of [false, true]) {
+    test(`an innerHTML swap into split text keeps the new text (push url: ${push})`, async () => {
+      const { page, context } = await open(url);
+      // #split is a timeline step. #solo has its own record, so init.js starts it again.
+      await inject(
+        page,
+        '<h2 id="solo" data-gsap="fade" data-gsap-split="words" data-gsap-on="load">Old split heading</h2>',
+      );
+      for (const [id, target] of [
+        ["to-split", "#split"],
+        ["to-solo", "#solo"],
+      ]) {
+        const attrs = { "hx-get": "/plain", "hx-target": target, "hx-select": ".plain", "hx-swap": "innerHTML" };
+        if (push) attrs["hx-push-url"] = `/?${id}=1`;
+        const btn = await addButton(page, id, attrs);
+        await page.$eval(btn, (b) => b.click());
+        await page.waitForFunction((t) => document.querySelector(t).textContent.includes("Plain content."), target);
+      }
+      await page.waitForTimeout(300);
+      const read = (sel) =>
+        page.$eval(sel, (el) => ({
+          text: el.textContent.trim(),
+          label: el.getAttribute("aria-label"),
+          split: el.querySelectorAll(".gsap-word").length > 0,
+        }));
+      assert.deepEqual(await read("#split"), { text: "Plain content.", label: null, split: false });
+      assert.deepEqual(await read("#solo"), { text: "Plain content.", label: "Plain content.", split: true });
+      await context.close();
+    });
+  }
+
+  for (const push of [false, true]) {
+    test(`an innerHTML swap into a pinned timeline makes one spacer (push url: ${push})`, async () => {
+      const { page, context } = await open(url);
+      const attrs = { "hx-get": "/swap", "hx-target": "#pinned", "hx-swap": "innerHTML" };
+      if (push) attrs["hx-push-url"] = "/?pinned=1";
+      const btn = await addButton(page, "to-pinned", attrs);
+      await page.$eval(btn, (b) => b.click());
+      await page.waitForSelector("#pinned .swap-item");
+      await page.waitForTimeout(300);
+      const state = await page.evaluate(() => ({
+        spacers: document.querySelectorAll(".pin-spacer").length,
+        nested: !!document.querySelector(".pin-spacer .pin-spacer"),
+      }));
+      assert.deepEqual(state, { spacers: 1, nested: false });
+      await context.close();
+    });
+  }
+
+  test("Back returns to the same scroll position below a pin", async () => {
+    const { page, context } = await open(url);
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    await page.waitForTimeout(200);
+    const y = await page.evaluate(() => window.scrollY);
+    await page.$eval("#about-link", (a) => a.click());
+    await page.waitForSelector("#about[data-gsap-init]");
+    await page.goBack();
+    await page.waitForSelector("#card-fade-up");
+    await page.waitForTimeout(400);
+    const after = await page.evaluate(() => window.scrollY);
+    assert.ok(Math.abs(after - y) < 50, `before ${y}, after ${after}`);
+    await context.close();
+  });
+
+  test("a parent with hx-disinherit does not give its hx-swap", async () => {
+    const { page, context } = await open(url);
+    await scrollTo(page, "#card-fade-up");
+    await waitOpaque(page, "#card-fade-up");
+    await page.evaluate(() => {
+      const wrap = document.createElement("div");
+      wrap.setAttribute("hx-swap", "outerHTML");
+      wrap.setAttribute("hx-disinherit", "*");
+      wrap.innerHTML = '<button id="dis" hx-get="/plain" hx-target="#card-fade-up">x</button>';
+      document.body.prepend(wrap);
+      window.htmx.process(wrap);
+    });
+    const stop = await watchOpacity(page, "#card-fade-up");
+    await page.$eval("#dis", (b) => b.click());
+    await page.waitForSelector("#card-fade-up .plain");
+    await page.waitForTimeout(300);
+    assert.equal(await stop(), 1, "an innerHTML swap does not replay the target");
+    await context.close();
+  });
+
   test("blur-in and flip-x end at the CSS opacity of the element", async () => {
     const { page, context } = await open(url);
     await inject(

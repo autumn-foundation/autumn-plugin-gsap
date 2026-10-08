@@ -426,6 +426,9 @@
                 charsClass: "gsap-char",
                 wordsClass: "gsap-word",
                 linesClass: "gsap-line",
+                // A second split of the same element must keep new content. ctx.revert()
+                // still restores the first split.
+                overwrite: false,
             };
             if (read(el, "data-gsap-split-mask")) {
                 opts.mask = unit;
@@ -438,6 +441,9 @@
             var parts = window.SplitText.create(el, opts)[unit];
             if (parts && parts.length) {
                 rec.splits.push(before);
+                if (SPLIT_OWNER) {
+                    SPLIT_OWNER.set(el, { rec: rec, split: before });
+                }
                 rec.owns = true;
                 return { list: parts, split: true };
             }
@@ -597,8 +603,8 @@
     // ---- Records: one gsap.context per element, so htmx cleanup can revert it. ----
 
     var RECORDS = typeof WeakMap === "function" ? new WeakMap() : null;
-    // The live records, for the history snapshot. `release` removes a record.
-    var LIVE = typeof Set === "function" ? new Set() : null;
+    // A split element and the record that split it (also a timeline step).
+    var SPLIT_OWNER = typeof WeakMap === "function" ? new WeakMap() : null;
     var registered = false;
 
     function register(gsap) {
@@ -637,9 +643,6 @@
         }
         if (RECORDS) {
             RECORDS.set(el, rec);
-        }
-        if (LIVE) {
-            LIVE.add(rec);
         }
         return true;
     }
@@ -710,9 +713,6 @@
             return false;
         }
         RECORDS.delete(el);
-        if (LIVE) {
-            LIVE.delete(rec);
-        }
         if (restore) {
             rec.ctx.revert();
         } else {
@@ -804,19 +804,54 @@
         refreshSoon();
     });
 
-    // The swap style of an htmx swap: the HX-Reswap override, the nearest hx-swap,
-    // or the htmx default.
+    function hxAttr(el, name) {
+        return el.getAttribute(name) || el.getAttribute("data-" + name);
+    }
+
+    // The hx-swap value for `src`, with the htmx inheritance rules:
+    // `hx-disinherit` on an ancestor stops the search, and with
+    // `htmx.config.disableInheritance` an ancestor counts only with `hx-inherit`.
+    function inheritedSwap(src) {
+        var h = window.htmx;
+        var noInherit = !!(h && h.config && h.config.disableInheritance);
+        for (var node = src; node && node.getAttribute; node = node.parentElement) {
+            var value = hxAttr(node, "hx-swap");
+            if (node === src) {
+                if (value) {
+                    return value;
+                }
+                continue;
+            }
+            if (noInherit) {
+                var inherit = hxAttr(node, "hx-inherit");
+                if (value && inherit && (inherit === "*" || inherit.split(" ").indexOf("hx-swap") >= 0)) {
+                    return value;
+                }
+                continue;
+            }
+            var dis = hxAttr(node, "hx-disinherit");
+            if (value && dis && (dis === "*" || dis.split(" ").indexOf("hx-swap") >= 0)) {
+                return null;
+            }
+            if (value) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    // The swap style of an htmx swap: the HX-Reswap override, the inherited hx-swap,
+    // or the htmx default (innerHTML for a boosted request).
     function swapStyle(d) {
         var spec = d.swapOverride;
         if (!spec) {
             // htmx sets `detail.elt` to the target. The trigger element is in requestConfig.
             var src = (d.requestConfig && d.requestConfig.elt) || d.elt;
-            var holder = src && src.closest ? src.closest("[hx-swap],[data-hx-swap]") : null;
-            spec = holder ? holder.getAttribute("hx-swap") || holder.getAttribute("data-hx-swap") : null;
+            spec = src ? inheritedSwap(src) : null;
         }
         if (!spec) {
             var h = window.htmx;
-            spec = (h && h.config && h.config.defaultSwapStyle) || "innerHTML";
+            spec = d.boosted ? "innerHTML" : (h && h.config && h.config.defaultSwapStyle) || "innerHTML";
         }
         return String(spec).trim().split(/\s+/)[0];
     }
@@ -827,6 +862,7 @@
     // Containers that animate their children (stagger, split, timeline). An innerHTML
     // swap replaces the children, so init.js starts the container again after the swap.
     var restartAfterSwap = typeof WeakSet === "function" ? new WeakSet() : null;
+    var staleSplits = typeof WeakSet === "function" ? new WeakSet() : null;
 
     // Runs on the kebab-case event, so `hx-on::before-swap` handlers run first.
     document.addEventListener("htmx:before-swap", function (e) {
@@ -846,14 +882,37 @@
             var rec = RECORDS && RECORDS.get(target);
             if (rec && rec.owns && restartAfterSwap) {
                 restartAfterSwap.add(target);
+            } else if (SPLIT_OWNER && SPLIT_OWNER.has(target) && staleSplits) {
+                // A split timeline step gets new text. Its split label is now wrong.
+                staleSplits.add(target);
             }
         }
     });
 
     document.addEventListener("htmx:afterSwap", function (e) {
         var target = e.detail && e.detail.target;
+        if (target && staleSplits && staleSplits.has(target)) {
+            staleSplits.delete(target);
+            var own = SPLIT_OWNER.get(target);
+            SPLIT_OWNER.delete(target);
+            // Put back the author's label and forget the old split.
+            setAttr(target, "aria-label", own.split.label);
+            own.rec.splits = own.rec.splits.filter(function (x) {
+                return x !== own.split;
+            });
+        }
         if (target && restartAfterSwap && restartAfterSwap.has(target)) {
             restartAfterSwap.delete(target);
+            var rec = RECORDS && RECORDS.get(target);
+            if (rec) {
+                // The target stays on the page. Remove its pin spacer, or the new
+                // ScrollTrigger puts a second spacer inside the old one.
+                rec.ctx.data.slice().forEach(function (d) {
+                    if (d && d.pin === target && typeof d.kill === "function") {
+                        d.kill(true);
+                    }
+                });
+            }
             release(target, false);
             scan(target);
         }
@@ -875,45 +934,59 @@
     // init marks, pin spacers). Returns a function that puts the state back.
     function detach(root) {
         var undo = [];
-        if (LIVE) {
-            LIVE.forEach(function (rec) {
-                if (!rec.el.isConnected) {
-                    LIVE.delete(rec);
-                    return;
-                }
-                if (!root.contains(rec.el)) {
-                    return;
-                }
-                rec.splits.forEach(function (s) {
-                    var nodes = Array.prototype.slice.call(s.el.childNodes);
-                    var label = s.el.getAttribute("aria-label");
-                    s.el.innerHTML = s.html;
-                    setAttr(s.el, "aria-label", s.label);
-                    undo.push(function () {
-                        while (s.el.firstChild) {
-                            s.el.removeChild(s.el.firstChild);
+        collect(root, "[" + INIT + "]").forEach(function (el) {
+            var rec = RECORDS && RECORDS.get(el);
+            if (!rec) {
+                return;
+            }
+            // A swap can run before the put-back. Then the record is gone or new:
+            // put back nothing for it.
+            var live = function () {
+                return RECORDS.get(rec.el) === rec;
+            };
+            rec.splits.forEach(function (s) {
+                var nodes = Array.prototype.slice.call(s.el.childNodes);
+                var label = s.el.getAttribute("aria-label");
+                s.el.innerHTML = s.html;
+                setAttr(s.el, "aria-label", s.label);
+                var placed = Array.prototype.slice.call(s.el.childNodes);
+                undo.push(function () {
+                    var now = s.el.childNodes;
+                    if (!live() || now.length !== placed.length) {
+                        return;
+                    }
+                    for (var i = 0; i < placed.length; i++) {
+                        if (now[i] !== placed[i]) {
+                            return;
                         }
-                        nodes.forEach(function (n) {
-                            s.el.appendChild(n);
-                        });
-                        setAttr(s.el, "aria-label", label);
+                    }
+                    while (s.el.firstChild) {
+                        s.el.removeChild(s.el.firstChild);
+                    }
+                    nodes.forEach(function (n) {
+                        s.el.appendChild(n);
                     });
-                });
-                rec.styles.forEach(function (x) {
-                    var now = x.node.getAttribute("style");
-                    setAttr(x.node, "style", x.style);
-                    undo.push(function () {
-                        setAttr(x.node, "style", now);
-                    });
-                });
-                rec.claimed.forEach(function (c) {
-                    c.removeAttribute(INIT);
-                    undo.push(function () {
-                        c.setAttribute(INIT, "true");
-                    });
+                    setAttr(s.el, "aria-label", label);
                 });
             });
-        }
+            rec.styles.forEach(function (x) {
+                var now = x.node.getAttribute("style");
+                setAttr(x.node, "style", x.style);
+                undo.push(function () {
+                    if (live()) {
+                        setAttr(x.node, "style", now);
+                    }
+                });
+            });
+            rec.claimed.forEach(function (c) {
+                c.removeAttribute(INIT);
+                undo.push(function () {
+                    if (live()) {
+                        c.setAttribute(INIT, "true");
+                    }
+                });
+            });
+        });
         var spacers = root.querySelectorAll(".pin-spacer");
         for (var i = 0; i < spacers.length; i++) {
             (function (sp) {
@@ -924,10 +997,13 @@
                 sp.parentNode.insertBefore(child, sp);
                 sp.parentNode.removeChild(sp);
                 undo.push(function () {
-                    if (child.parentNode) {
-                        child.parentNode.insertBefore(sp, child);
-                        sp.appendChild(child);
+                    var parent = child.parentNode;
+                    // Skip when the element left the page or has a new spacer.
+                    if (!child.isConnected || !parent || parent.classList.contains("pin-spacer")) {
+                        return;
                     }
+                    parent.insertBefore(sp, child);
+                    sp.appendChild(child);
                 });
             })(spacers[i]);
         }
@@ -951,11 +1027,24 @@
     // The page does not change on screen, and Back gets clean content to animate.
     document.addEventListener("htmx:beforeHistorySave", function (e) {
         var elt = (e.detail && e.detail.historyElt) || document.body;
+        // The detach removes pin spacers, so the page gets shorter for a moment.
+        // htmx reads scrollY then, so give it the scroll position from before.
+        var y = window.scrollY;
+        var setScroll = function (ev) {
+            if (ev.detail && ev.detail.item) {
+                ev.detail.item.scroll = y;
+            }
+        };
+        document.addEventListener("htmx:historyItemCreated", setScroll);
         var putBack = detach(elt);
+        var done = function () {
+            document.removeEventListener("htmx:historyItemCreated", setScroll);
+            putBack();
+        };
         if (typeof queueMicrotask === "function") {
-            queueMicrotask(putBack);
+            queueMicrotask(done);
         } else {
-            Promise.resolve().then(putBack);
+            Promise.resolve().then(done);
         }
     });
 
