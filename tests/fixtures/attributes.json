@@ -1181,7 +1181,7 @@
       "animate"
     ]
   ],
-  "toggle-complete complete complete complete": [
+  "toggle-complete none complete reverse": [
     [
       "data-gsap",
       "fade"
@@ -1191,7 +1191,7 @@
       "complete none complete reverse"
     ]
   ],
-  "toggle-none none none none": [
+  "toggle-none none none reverse": [
     [
       "data-gsap",
       "fade"
@@ -1201,7 +1201,7 @@
       "none none none reverse"
     ]
   ],
-  "toggle-pause pause pause pause": [
+  "toggle-pause none pause reverse": [
     [
       "data-gsap",
       "fade"
@@ -1211,7 +1211,7 @@
       "pause none pause reverse"
     ]
   ],
-  "toggle-play play play play": [
+  "toggle-play none play reverse": [
     [
       "data-gsap",
       "fade"
@@ -1221,7 +1221,7 @@
       "play none play reverse"
     ]
   ],
-  "toggle-reset reset reset reset": [
+  "toggle-reset none reset reverse": [
     [
       "data-gsap",
       "fade"
@@ -1231,7 +1231,7 @@
       "reset none reset reverse"
     ]
   ],
-  "toggle-restart restart restart restart": [
+  "toggle-restart none restart reverse": [
     [
       "data-gsap",
       "fade"
@@ -1241,7 +1241,7 @@
       "restart none restart reverse"
     ]
   ],
-  "toggle-resume resume resume resume": [
+  "toggle-resume none resume reverse": [
     [
       "data-gsap",
       "fade"
@@ -1251,7 +1251,7 @@
       "resume none resume reverse"
     ]
   ],
-  "toggle-reverse reverse reverse reverse": [
+  "toggle-reverse none reverse reverse": [
     [
       "data-gsap",
       "fade"

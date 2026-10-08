@@ -22,10 +22,10 @@
     // Value grammar. Keep these lines equal to src/grammar.rs (a Rust test checks it).
     var RE_SECS = /^(\d+(\.\d+)?)$/;
     var RE_NUM = /^(-?\d+(\.\d+)?)$/;
-    var RE_EASE = /^(none|(power[1-4]|sine|expo|circ|bounce)\.(in|out|inOut)|back\.(in|out|inOut)(\(-?\d+(\.\d+)?\))?|elastic\.(in|out|inOut)(\(-?\d+(\.\d+)?,-?\d+(\.\d+)?\))?|steps\(\d+\))$/;
+    var RE_EASE = /^(none|(power[1-4]|sine|expo|circ|bounce)\.(in|out|inOut)|back\.(in|out|inOut)(\(-?\d+(\.\d+)?\))?|elastic\.(in|out|inOut)(\(-?\d+(\.\d+)?,-?\d+(\.\d+)?\))?|steps\([1-9]\d*\))$/;
     var RE_SCROLL_POS = /^((top|center|bottom|-?\d+(\.\d+)?(px|%)) (top|center|bottom|-?\d+(\.\d+)?(px|%))|\+=\d+(\.\d+)?(px|%)?)$/;
     var RE_POSITION = /^(<|>|[<>]-?\d+(\.\d+)?|[+-]=\d+(\.\d+)?|\d+(\.\d+)?)$/;
-    var RE_INDEX = /^\d+$/;
+    var RE_INDEX = /^(\d+)$/;
 
     var ACTIONS = ["play", "pause", "resume", "reverse", "restart", "reset", "complete", "none"];
     var STAGGER_WORDS = ["start", "center", "end", "edges", "random"];
@@ -218,6 +218,7 @@
         "data-gsap-split": split,
         "data-gsap-split-mask": flag,
         "data-gsap-position": position,
+        "data-gsap-ignore": flag,
     };
 
     function known(name) {
@@ -802,7 +803,7 @@
 
     // A pin adds height after the browser restores the scroll position on reload.
     // Keep the position in sessionStorage and set it again after the first scan.
-    var SCROLL_KEY = "autumn-gsap-scroll:" + location.pathname;
+    var SCROLL_KEY = "autumn-gsap-scroll:" + (window.location ? window.location.pathname : "");
 
     function storage() {
         try {
@@ -812,7 +813,7 @@
         }
     }
 
-    window.addEventListener("pagehide", function () {
+    function onPageHide() {
         var s = storage();
         if (s) {
             try {
@@ -821,7 +822,11 @@
                 // Storage is full or blocked. The browser restores the position.
             }
         }
-    });
+    }
+
+    if (typeof window.addEventListener === "function") {
+        window.addEventListener("pagehide", onPageHide);
+    }
 
     function restoreScroll() {
         var s = storage();
@@ -829,7 +834,7 @@
             ? performance.getEntriesByType("navigation")[0]
             : null;
         var saved = s ? s.getItem(SCROLL_KEY) : null;
-        if (!nav || nav.type !== "reload" || saved === null || location.hash) {
+        if (!nav || nav.type !== "reload" || saved === null || window.location.hash) {
             return;
         }
         var y = parseFloat(saved);

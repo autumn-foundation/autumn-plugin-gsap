@@ -88,7 +88,10 @@ fn scroll_cases() -> Vec<Case> {
     ];
     for a in actions {
         out.push((
-            format!("toggle-{}", ToggleActions::new(a, a, a, a)),
+            format!(
+                "toggle-{}",
+                ToggleActions::new(a, Action::None, a, Action::Reverse)
+            ),
             Gsap::fade()
                 .toggle_actions(ToggleActions::new(a, Action::None, a, Action::Reverse))
                 .attributes(),

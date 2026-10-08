@@ -74,7 +74,7 @@ test("ease accepts GSAP ease strings only", () => {
   ]) {
     assert.equal(P.ease(ok), ok, ok);
   }
-  for (const bad of ["", "power5.out", "linear", "ease-out", "power2.out;x", "back.out(a)"]) {
+  for (const bad of ["", "power5.out", "linear", "ease-out", "power2.out;x", "back.out(a)", "steps(0)"]) {
     assert.equal(P.ease(bad), null, bad);
   }
 });
@@ -163,14 +163,43 @@ test("on and once accept their values only", () => {
   assert.equal(P.once("no"), null);
 });
 
-test("every attribute in the golden fixture parses", () => {
+// The value that init.js must read for each attribute in the fixture.
+const NUMBERS = new Set([
+  "data-gsap-delay",
+  "data-gsap-duration",
+  "data-gsap-repeat-delay",
+  "data-gsap-stagger",
+  "data-gsap-parallax",
+  "data-gsap-repeat",
+]);
+const FLAGS = new Set([
+  "data-gsap-yoyo",
+  "data-gsap-pin",
+  "data-gsap-markers",
+  "data-gsap-split-mask",
+  "data-gsap-timeline",
+]);
+
+function expected(attr, value) {
+  if (NUMBERS.has(attr)) return Number(value);
+  if (FLAGS.has(attr)) return true;
+  if (attr === "data-gsap-from" || attr === "data-gsap-to") return JSON.parse(value);
+  if (attr === "data-gsap-once") return value === "true";
+  if (attr === "data-gsap-scrub") return value === "true" ? true : Number(value);
+  if (attr === "data-gsap-stagger-from" && /^\d+$/.test(value)) return Number(value);
+  return value;
+}
+
+// Copies a sandbox object into this realm, so deepEqual compares only values.
+const norm = (v) => (v && typeof v === "object" ? { ...v } : v);
+
+test("every attribute in the golden fixture parses to its value", () => {
   let count = 0;
   for (const [name, attrs] of Object.entries(fixture)) {
     for (const [attr, value] of attrs) {
       assert.ok(P.known(attr), `${name}: unknown attribute ${attr}`);
       const parsed = P.attr(attr, value);
-      assert.notEqual(parsed, null, `${name}: ${attr}="${value}"`);
-      assert.notEqual(parsed, undefined, `${name}: ${attr}="${value}"`);
+      assert.deepEqual(norm(parsed), expected(attr, value), `${name}: ${attr}="${value}"`);
       count += 1;
     }
   }
@@ -188,7 +217,116 @@ test("every Rust preset has keyframes in init.js", () => {
   }
 });
 
-test("scan does nothing without gsap and with reduced motion", () => {
+// A small fake element: attributes, children and the selector calls that init.js uses.
+function fakeEl(attrs) {
+  const map = new Map(Object.entries(attrs));
+  return {
+    nodeType: 1,
+    children: [],
+    getAttribute: (n) => (map.has(n) ? map.get(n) : null),
+    hasAttribute: (n) => map.has(n),
+    setAttribute: (n, v) => map.set(n, String(v)),
+    removeAttribute: (n) => map.delete(n),
+    closest: () => null,
+    matches: () => false,
+    querySelector: () => null,
+    querySelectorAll: () => [],
+    contains: () => false,
+  };
+}
+
+// A fake gsap that records each call.
+function fakeGsap() {
+  const calls = [];
+  const gsap = {
+    calls,
+    registerPlugin() {},
+    context(fn) {
+      fn();
+      return { revert: () => calls.push(["revert"]) };
+    },
+    from: (t, v) => calls.push(["from", v]),
+    to: (t, v) => calls.push(["to", v]),
+    fromTo: (t, a, b) => calls.push(["fromTo", a, b]),
+  };
+  return gsap;
+}
+
+function loadWith(el, { reduce }) {
+  const gsap = fakeGsap();
+  const { api } = load({
+    gsap,
+    ScrollTrigger: function ScrollTrigger() {},
+    matchMedia: () => ({ matches: reduce }),
+  });
+  const root = {
+    querySelectorAll: (sel) => (sel === "[data-gsap]" ? [el] : []),
+    matches: () => false,
+  };
+  return { api, gsap, root };
+}
+
+test("scan does nothing without gsap", () => {
   const { api: noGsap } = load();
   assert.equal(noGsap.scan(), 0);
+});
+
+test("scan skips elements under reduced motion, unless they opt in", () => {
+  const el = fakeEl({ "data-gsap": "fade", "data-gsap-on": "load" });
+  const { api, root } = loadWith(el, { reduce: true });
+  assert.equal(api.scan(root), 0);
+  assert.equal(el.hasAttribute("data-gsap-init"), false);
+  el.setAttribute("data-gsap-reduced", "animate");
+  assert.equal(api.scan(root), 1);
+});
+
+test("scan writes the default ScrollTrigger vars", () => {
+  const el = fakeEl({ "data-gsap": "fade-up" });
+  el.getBoundingClientRect = () => ({ top: 2000 });
+  const { api, gsap, root } = loadWith(el, { reduce: false });
+  assert.equal(api.scan(root), 1);
+  const [kind, vars] = gsap.calls[0];
+  assert.equal(kind, "from");
+  assert.equal(vars.opacity, 0);
+  assert.equal(vars.y, 32);
+  assert.equal(vars.duration, 0.8);
+  assert.equal(vars.ease, "power3.out");
+  assert.equal(vars.scrollTrigger.once, true);
+  assert.equal(typeof vars.scrollTrigger.start, "function");
+  assert.equal(api.revert(root), 0, "revert needs a marked element in the root");
+});
+
+test("scrub, pin and toggle actions change the ScrollTrigger vars", () => {
+  const el = fakeEl({
+    "data-gsap": "fade",
+    "data-gsap-scrub": "0.5",
+    "data-gsap-pin": "",
+    "data-gsap-toggle-actions": "play none none reverse",
+  });
+  const { api, gsap, root } = loadWith(el, { reduce: false });
+  api.scan(root);
+  const st = gsap.calls[0][1].scrollTrigger;
+  assert.equal(st.scrub, 0.5);
+  assert.equal(st.start, "top bottom");
+  assert.equal(st.end, "bottom top");
+  assert.equal(st.pin, true);
+  assert.equal(st.once, undefined);
+  assert.equal(st.toggleActions, undefined, "scrub ignores toggle actions");
+});
+
+test("blur-in and flip-x use fromTo with full end states", () => {
+  for (const kind of ["blur-in", "flip-x"]) {
+    const el = fakeEl({ "data-gsap": kind, "data-gsap-on": "load" });
+    const { api, gsap, root } = loadWith(el, { reduce: false });
+    api.scan(root);
+    const [call, from, to] = gsap.calls[0];
+    assert.equal(call, "fromTo", kind);
+    for (const key of Object.keys(from)) {
+      assert.ok(key in to, `${kind}: the end state sets ${key}`);
+    }
+  }
+});
+
+test("data-gsap-ignore is a known flag", () => {
+  assert.equal(P.attr("data-gsap-ignore", ""), true);
 });

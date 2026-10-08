@@ -1,6 +1,6 @@
 //! Test-only copy of the value grammar that `assets/init.js` accepts.
 //!
-//! Keep each pattern equal to the matching `RE_*` constant in `init.js`.
+//! Keep each pattern equal to the `RE_*` constant with the same name in `init.js`.
 //! The test `init_js_uses_the_same_patterns` checks this.
 
 use regex::Regex;
@@ -8,13 +8,14 @@ use regex::Regex;
 /// A plain decimal number.
 pub(crate) const NUM: &str = r"-?\d+(\.\d+)?";
 
-/// Pattern sources, by `init.js` constant name. Each is anchored there with `^…$`.
+/// Pattern sources, by `init.js` constant name. `init.js` anchors each pattern with `^…$`.
 pub(crate) const PATTERNS: &[(&str, &str)] = &[
     ("RE_SECS", r"\d+(\.\d+)?"),
     ("RE_NUM", r"-?\d+(\.\d+)?"),
+    ("RE_INDEX", r"\d+"),
     (
         "RE_EASE",
-        r"none|(power[1-4]|sine|expo|circ|bounce)\.(in|out|inOut)|back\.(in|out|inOut)(\(-?\d+(\.\d+)?\))?|elastic\.(in|out|inOut)(\(-?\d+(\.\d+)?,-?\d+(\.\d+)?\))?|steps\(\d+\)",
+        r"none|(power[1-4]|sine|expo|circ|bounce)\.(in|out|inOut)|back\.(in|out|inOut)(\(-?\d+(\.\d+)?\))?|elastic\.(in|out|inOut)(\(-?\d+(\.\d+)?,-?\d+(\.\d+)?\))?|steps\([1-9]\d*\)",
     ),
     (
         "RE_SCROLL_POS",
