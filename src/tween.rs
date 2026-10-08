@@ -213,7 +213,6 @@ impl Gsap {
     }
 
     /// Makes a custom tween (`data-gsap="custom"`). Empty props write no JSON.
-    /// With no props, `init.js` does not animate the element.
     fn custom(from: Option<Props>, to: Option<Props>) -> Self {
         let mut g = Self::preset(Preset::Fade);
         g.preset = None;
@@ -223,16 +222,19 @@ impl Gsap {
     }
 
     /// Animates from `props` to the CSS state (`gsap.from`).
+    /// Empty props write no JSON. With no props, `init.js` does not animate the element.
     pub fn from_props(props: Props) -> Self {
         Self::custom(Some(props), None)
     }
 
     /// Animates from the CSS state to `props` (`gsap.to`).
+    /// Empty props write no JSON. With no props, `init.js` does not animate the element.
     pub fn to_props(props: Props) -> Self {
         Self::custom(None, Some(props))
     }
 
     /// Animates from `from` to `to` (`gsap.fromTo`).
+    /// Empty props write no JSON. With no props, `init.js` does not animate the element.
     pub fn from_to(from: Props, to: Props) -> Self {
         Self::custom(Some(from), Some(to))
     }
@@ -387,15 +389,15 @@ pub struct Parallax {
 }
 
 impl Parallax {
-    /// Sets the `id` of the wrapper element. An empty string sets no `id`.
+    /// Sets the `id` of the wrapper element. A blank string sets no `id`.
     pub fn id(mut self, id: impl Into<String>) -> Self {
-        self.id = Some(id.into()).filter(|s| !s.is_empty());
+        self.id = Some(id.into()).filter(|s| !s.trim().is_empty());
         self
     }
 
-    /// Sets the `class` of the wrapper element. An empty string sets no `class`.
+    /// Sets the `class` of the wrapper element. A blank string sets no `class`.
     pub fn class(mut self, class: impl Into<String>) -> Self {
-        self.class = Some(class.into()).filter(|s| !s.is_empty());
+        self.class = Some(class.into()).filter(|s| !s.trim().is_empty());
         self
     }
 
@@ -509,7 +511,7 @@ mod tests {
 
     #[test]
     fn empty_strings_write_no_attribute() {
-        let g = Gsap::fade().id("").class("").trigger("");
+        let g = Gsap::fade().id("").class(" ").trigger("  ");
         assert_eq!(attrs(&g).len(), 1, "{:?}", attrs(&g));
         let html = g.wrap(html! {}).into_string();
         assert_eq!(html, r#"<div data-gsap="fade"></div>"#);

@@ -7,7 +7,7 @@ use crate::ease::Ease;
 use crate::fmt::secs;
 use crate::scroll::{Play, ScrollPos, Scrub, ToggleActions};
 
-/// The play time that `init.js` uses when no duration is set.
+/// The play time that `init.js` uses when you set no duration.
 #[cfg(test)]
 pub(crate) const DEFAULT_DURATION: Duration = Duration::from_millis(800);
 
@@ -150,9 +150,9 @@ macro_rules! common_setters {
 
         /// Uses another element as the ScrollTrigger trigger (`data-gsap-trigger`).
         /// The value is a CSS selector. An unknown selector uses the element itself.
-        /// An empty string sets no trigger.
+        /// A blank string sets no trigger.
         pub fn trigger(mut self, selector: impl Into<String>) -> Self {
-            self.common.trigger = Some(selector.into()).filter(|s| !s.is_empty());
+            self.common.trigger = Some(selector.into()).filter(|s| !s.trim().is_empty());
             self
         }
 
@@ -204,15 +204,15 @@ macro_rules! common_setters {
             self
         }
 
-        /// Sets the `id` of the wrapper element. An empty string sets no `id`.
+        /// Sets the `id` of the wrapper element. A blank string sets no `id`.
         pub fn id(mut self, id: impl Into<String>) -> Self {
-            self.common.id = Some(id.into()).filter(|s| !s.is_empty());
+            self.common.id = Some(id.into()).filter(|s| !s.trim().is_empty());
             self
         }
 
-        /// Sets the `class` of the wrapper element. An empty string sets no `class`.
+        /// Sets the `class` of the wrapper element. A blank string sets no `class`.
         pub fn class(mut self, class: impl Into<String>) -> Self {
-            self.common.class = Some(class.into()).filter(|s| !s.is_empty());
+            self.common.class = Some(class.into()).filter(|s| !s.trim().is_empty());
             self
         }
 

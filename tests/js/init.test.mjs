@@ -206,6 +206,15 @@ test("every attribute in the golden fixture parses to its value", () => {
   assert.ok(count > 100, `fixture has ${count} attributes`);
 });
 
+test("init.js has no preset that Rust does not know", () => {
+  const rust = Object.keys(fixture)
+    .filter((name) => name.startsWith("preset-"))
+    .map((name) => name.slice("preset-".length));
+  const special = ["custom", "parallax", "scroll-progress"];
+  const js = api.presets.filter((p) => !special.includes(p));
+  assert.deepEqual([...js].sort(), [...rust].sort());
+});
+
 test("every Rust preset has keyframes in init.js", () => {
   const names = Object.values(fixture)
     .flat()
@@ -241,6 +250,8 @@ function fakeGsap() {
   const gsap = {
     calls,
     registerPlugin() {},
+    utils: { toArray: (t) => (Array.isArray(t) ? t : [t]) },
+    getProperty: () => 1,
     context(fn) {
       fn();
       return { revert: () => calls.push(["revert"]) };
@@ -324,6 +335,9 @@ test("blur-in and flip-x use fromTo with full end states", () => {
     for (const key of Object.keys(from)) {
       assert.ok(key in to, `${kind}: the end state sets ${key}`);
     }
+    // The end opacity comes from the element (here 1, from the fake getProperty).
+    assert.equal(typeof to.opacity, "function", kind);
+    assert.equal(to.opacity(0), 1, kind);
   }
 });
 

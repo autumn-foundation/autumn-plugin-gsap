@@ -8,8 +8,9 @@ use maud::Escaper;
 /// One HTML attribute: name and value. An empty value writes a bare attribute.
 pub type Attr = (&'static str, String);
 
-/// The HTML element that [`Gsap::wrap_in`](crate::Gsap::wrap_in) and
-/// [`Timeline::wrap_in`](crate::Timeline::wrap_in) write.
+/// The HTML element that [`Gsap::wrap_in`](crate::Gsap::wrap_in),
+/// [`Timeline::wrap_in`](crate::Timeline::wrap_in) and
+/// [`Parallax::wrap_in`](crate::Parallax::wrap_in) write.
 ///
 /// Put the animation on the semantic element. For example, put SplitText on the
 /// heading itself, so its `aria-label` is on the heading.

@@ -20,8 +20,7 @@ pub struct Props {
     values: Vec<(&'static str, f32)>,
 }
 
-/// Property names that `init.js` accepts, in GSAP spelling.
-#[cfg(test)]
+/// Property names that `init.js` accepts, in GSAP spelling and in JSON order.
 pub(crate) const PROP_NAMES: &[&str] = &[
     "x",
     "y",
@@ -99,17 +98,19 @@ impl Props {
         auto_alpha => "autoAlpha";
     }
 
-    /// `true` when no property is set.
+    /// `true` when the set holds no property.
     #[must_use]
     pub const fn is_empty(&self) -> bool {
         self.values.is_empty()
     }
 
     /// The JSON object that `init.js` reads, for example `{"x":-40}`.
+    /// The keys are in a fixed order, so equal sets write equal JSON.
     #[must_use]
     pub fn to_json(&self) -> String {
-        let body: Vec<String> = self
-            .values
+        let mut values = self.values.clone();
+        values.sort_by_key(|(name, _)| PROP_NAMES.iter().position(|n| n == name));
+        let body: Vec<String> = values
             .iter()
             .filter_map(|(name, value)| num(*value).map(|v| format!(r#""{name}":{v}"#)))
             .collect();
@@ -169,6 +170,11 @@ mod tests {
     #[test]
     fn equality_ignores_the_order() {
         assert_eq!(Props::new().x(1.0).y(2.0), Props::new().y(2.0).x(1.0));
+        assert_eq!(
+            Props::new().opacity(0.0).x(1.0).to_json(),
+            Props::new().x(1.0).opacity(0.0).to_json(),
+            "equal sets write equal JSON"
+        );
         assert_ne!(Props::new().x(1.0), Props::new().x(2.0));
         assert_ne!(Props::new().x(1.0), Props::new().x(1.0).y(0.0));
     }

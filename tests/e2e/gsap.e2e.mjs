@@ -546,6 +546,140 @@ describe("runtime edge cases", () => {
   });
 });
 
+// Records the lowest opacity of `sel` on each frame until `stop()`.
+async function watchOpacity(page, sel) {
+  await page.evaluate((s) => {
+    window.__min = 1;
+    const tick = () => {
+      const el = document.querySelector(s);
+      if (el) window.__min = Math.min(window.__min, Number(getComputedStyle(el).opacity));
+      window.__raf = requestAnimationFrame(tick);
+    };
+    tick();
+  }, sel);
+  return async () =>
+    page.evaluate(() => {
+      cancelAnimationFrame(window.__raf);
+      return window.__min;
+    });
+}
+
+// Adds a button with htmx attributes and returns its selector.
+async function addButton(page, id, attrs) {
+  await page.evaluate(
+    ({ id: bid, attrs: a }) => {
+      const b = document.createElement("button");
+      b.id = bid;
+      for (const [k, v] of Object.entries(a)) b.setAttribute(k, v);
+      document.body.prepend(b);
+      window.htmx.process(b);
+    },
+    { id, attrs },
+  );
+  return `#${id}`;
+}
+
+describe("htmx swaps keep played content", () => {
+  test("appending a batch does not replay the earlier batch", async () => {
+    const { page, context } = await open(url);
+    await scrollTo(page, "#htmx");
+    await page.click("#load-more");
+    await page.waitForSelector(".more-item:nth-child(3)[data-gsap-init]");
+    await waitOpaque(page, ".more-item:nth-child(3)");
+    const stop = await watchOpacity(page, ".more-item");
+    await page.click("#load-more");
+    await page.waitForFunction(() => document.querySelectorAll(".more-item[data-gsap-init]").length === 6);
+    await page.waitForTimeout(300);
+    assert.equal(await stop(), 1);
+    await context.close();
+  });
+
+  test("a partial history push does not replay or move the page", async () => {
+    const { page, context } = await open(url);
+    await scrollTo(page, "#card-fade-up");
+    await waitOpaque(page, "#card-fade-up");
+    const tab = await addButton(page, "tab", {
+      "hx-get": "/plain",
+      "hx-target": "#swap",
+      "hx-push-url": "/?tab=1",
+    });
+    const y = await page.evaluate(() => window.scrollY);
+    const stop = await watchOpacity(page, "#card-fade-up");
+    await page.$eval(tab, (b) => b.click());
+    await page.waitForSelector("#swap .plain");
+    await page.waitForTimeout(300);
+    assert.equal(await stop(), 1);
+    assert.equal(await page.evaluate(() => window.scrollY), y);
+    assert.equal(await page.locator(".pin-spacer").count(), 1);
+    await context.close();
+  });
+
+  test("a refresh runs after each settle, also with no animated content", async () => {
+    const { page, context } = await open(url);
+    const btn = await addButton(page, "plain", { "hx-get": "/plain", "hx-target": "#more", "hx-swap": "beforeend" });
+    await page.evaluate(() => {
+      window.__refresh = 0;
+      const real = window.ScrollTrigger.refresh;
+      window.ScrollTrigger.refresh = function (...args) {
+        window.__refresh += 1;
+        return real.apply(this, args);
+      };
+    });
+    for (let i = 0; i < 2; i++) {
+      await page.$eval(btn, (b) => b.click());
+      await page.waitForFunction((n) => document.querySelectorAll("#more .plain").length === n, i + 1);
+      await page.waitForFunction((n) => window.__refresh >= n, i + 1);
+    }
+    await context.close();
+  });
+
+  test("a cancelled outerHTML swap keeps the animation of its target", async () => {
+    const { page, context } = await open(url);
+    await page.evaluate(() => {
+      const el = document.createElement("section");
+      el.id = "keep";
+      el.style.height = "200px";
+      el.setAttribute("data-gsap", "fade");
+      el.setAttribute("data-gsap-pin", "");
+      el.setAttribute("data-gsap-start", "top top");
+      el.setAttribute("data-gsap-end", "+=300");
+      document.querySelector("#htmx").before(el);
+      window.AutumnGsap.scan(el);
+      // This listener runs after the one in init.js, then cancels the swap.
+      document.addEventListener("htmx:before-swap", (e) => {
+        e.detail.shouldSwap = false;
+      });
+    });
+    const btn = await addButton(page, "cancel", { "hx-get": "/plain", "hx-target": "#keep", "hx-swap": "outerHTML" });
+    await page.$eval(btn, (b) => b.click());
+    await page.waitForFunction(() => document.querySelector("#keep").hasAttribute("data-gsap-init"));
+    await page.waitForTimeout(200);
+    const state = await page.evaluate(() => ({
+      inited: document.querySelector("#keep").hasAttribute("data-gsap-init"),
+      pinned: document.querySelector("#keep").parentElement.classList.contains("pin-spacer"),
+    }));
+    assert.deepEqual(state, { inited: true, pinned: true });
+    await context.close();
+  });
+
+  test("blur-in and flip-x end at the CSS opacity of the element", async () => {
+    const { page, context } = await open(url);
+    await inject(
+      page,
+      '<p id="b4" style="opacity:0.4" data-gsap="blur-in" data-gsap-on="load" data-gsap-duration="0.1">a</p>' +
+        '<p id="f4" style="opacity:0.4" data-gsap="flip-x" data-gsap-on="load" data-gsap-duration="0.1">b</p>',
+      500,
+    );
+    const end = await page.evaluate(() => ({
+      b: getComputedStyle(document.querySelector("#b4")).opacity,
+      f: getComputedStyle(document.querySelector("#f4")).opacity,
+      filter: document.querySelector("#b4").style.filter,
+    }));
+    assert.deepEqual(end, { b: "0.4", f: "0.4", filter: "" });
+    await context.close();
+  });
+});
+
 describe("accessibility and layout", () => {
   test("an element below the reveal line at the page end appears", async () => {
     const { page, context } = await open(url);

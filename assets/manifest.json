@@ -22,7 +22,7 @@
   "homepage": "https://gsap.com",
   "library": "gsap",
   "license": "https://gsap.com/standard-license",
-  "notes": "Upstream files, not changed. Each file keeps its license header. init.js and gsap.css are plugin files: the framework computes their SRI at runtime. This file is provenance only. It is not served.",
+  "notes": "We do not change the upstream files. Each file keeps its license header. init.js and gsap.css are plugin files: the framework computes their SRI at runtime. This file is provenance only. The plugin does not serve it.",
   "pinned": "latest 3.x on npm as of 2026-10-08",
   "version": "3.15.0"
 }

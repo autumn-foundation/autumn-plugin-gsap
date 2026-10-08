@@ -17,10 +17,12 @@ use crate::options::{Common, common_setters};
 /// assert_eq!(Position::Overlap(Duration::from_millis(200)).to_string(), "-=0.2");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Position {
     /// After the most recent step ends (`>`).
     /// With no position, a step starts at the end of the timeline.
-    /// The two differ after a `<` or an overlap step.
+    /// The two differ when the most recent step ends before the end of the timeline,
+    /// for example a short step at `<`.
     After,
     /// When the most recent step starts (`<`).
     WithPrevious,
@@ -53,6 +55,7 @@ impl fmt::Display for Position {
 /// The `duration` and `ease` options are defaults for the children.
 /// On a child, `init.js` reads only the timing, stagger, split and position options.
 /// It ignores the ScrollTrigger options and `animate_on_reduced_motion` of a child.
+/// [`Parallax`](crate::Parallax) and the progress bar cannot be timeline steps.
 ///
 /// ```rust
 /// use std::time::Duration;

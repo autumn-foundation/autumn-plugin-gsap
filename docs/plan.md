@@ -46,7 +46,7 @@ One script (`init.js`) reads the attributes and calls GSAP.
 | A timeline child also animates alone. | Scan timelines first. They claim their children. |
 | SplitText removes the text for screen readers. | Use SplitText `aria: "auto"`. The e2e test checks `aria-label`. |
 | The vendored bytes change by accident. | Pin the `sha384` of each upstream file. A test checks it. |
-| The GSAP license is ignored. | Keep the upstream headers. Record the license in the manifest and README. |
+| Users ignore the GSAP license. | Keep the upstream headers. Record the license in the manifest and README. |
 | The plugin forces features on the host app. | Use `PluginAssets::from_files`. Do not enable `embed-assets`. |
 
 ## 4. Six thinking hats
@@ -80,7 +80,7 @@ Out of scope for 0.1.0: `Flip`, `Draggable`, `ScrollSmoother`, `MorphSVG`, `Draw
 4. `gsap_script()` emits deferred, SRI tags in this order: gsap, ScrollTrigger, SplitText, init. `gsap_stylesheet()` emits the CSS link.
 5. The `Gsap` builder covers presets, `Duration` times, typed `Ease`, repeat/yoyo, ScrollTrigger options, stagger, SplitText, custom `Props`, parallax and the progress bar.
 6. The `Timeline` builder plays children in sequence. It supports typed `Position` values.
-7. Each builder option maps to one `data-gsap-*` attribute. Defaults write no attribute.
+7. Each builder option maps to one `data-gsap-*` attribute. An option that you do not set writes no attribute.
 8. `init.js` scans on load and on `htmx:load`. It reverts tweens and ScrollTriggers on `htmx:beforeCleanupElement`.
 9. `init.js` validates every attribute. A bad value does not stop the scan.
 10. Reduced motion skips animation. `data-gsap-reduced="animate"` opts in.

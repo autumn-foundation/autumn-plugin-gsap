@@ -11,7 +11,8 @@ First release.
 - The `Timeline` builder has typed `Position` values.
 - Typed values: `Ease`, `ScrollPos`, `ToggleActions`, `Scrub`, `Repeat`, `Play`, `Tag`.
 - `init.js` scans on load and on `htmx:load`.
-- `init.js` reverts animations before htmx swaps, on cleanup and before history saves.
+- `init.js` stops the animations of removed content, and does not replay content that stays.
+- htmx history snapshots get no GSAP state. Back restores clean content that animates again.
 - `init.js` checks each attribute value. A bad value gets a warning and the default.
 - Elements do not animate for reduced motion. A setting change after load also applies.
 - `init.js` skips `data-gsap-ignore` and `hx-disable` regions.

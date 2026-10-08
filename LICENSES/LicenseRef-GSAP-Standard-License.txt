@@ -1,15 +1,16 @@
-GSAP Standard "No Charge" License
-=================================
+GSAP Standard "No Charge" License: pointer and summary
+======================================================
 
-Applies to these vendored files, which are not changed:
+This file points to the license of these vendored files. We do not change these files:
 
 - assets/gsap.min.js
 - assets/ScrollTrigger.min.js
 - assets/SplitText.min.js
 
-Copyright (c) 2008-2026, GreenSock. All rights reserved.
+Copyright 2026, GreenSock. All rights reserved. (The header of each file.)
 
-The full and current terms are at: https://gsap.com/standard-license
+The full and current license text is at: https://gsap.com/standard-license
+That text is the license. This file is not the license.
 Read the full terms before you use or distribute these files.
 
 Summary (not the license, not legal advice):

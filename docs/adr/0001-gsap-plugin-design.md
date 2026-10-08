@@ -22,9 +22,10 @@ The prior art (`autumn-plugin-motion`) uses `data-*` attributes and one init scr
    `Props` accepts only listed property names. The builder does not write a value that is not finite.
 5. **Lockstep tests.** A golden fixture (`tests/fixtures/attributes.json`) holds the Rust output.
    The JS tests parse each value with `init.js`. A Rust test checks that `init.js` uses the same regexes.
-6. **One `gsap.context` per element.** `init.js` reverts it before an htmx swap, on
-   `htmx:beforeCleanupElement`, and before htmx saves a history snapshot.
-   This removes tweens, ScrollTriggers and SplitText of removed content, so nothing leaks.
+6. **One `gsap.context` per element.** On `htmx:beforeCleanupElement`, `init.js` kills it with no DOM
+   change, because a DOM change during a swap breaks htmx. Before an `outerHTML` swap, it reverts the target.
+   For the history snapshot, it removes the GSAP state and puts it back in a microtask.
+   Thus nothing leaks, played content does not replay, and the page does not move.
 7. **Timelines claim their children.** The scan does timelines first. A child of a timeline never animates alone.
 8. **Fail soft.** A bad attribute value gets a console warning and the default. Missing GSAP means no animation.
    Reduced motion means no animation, unless the element has `data-gsap-reduced="animate"`.

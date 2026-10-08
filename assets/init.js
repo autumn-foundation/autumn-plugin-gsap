@@ -379,7 +379,34 @@
             var to = read(el, "data-gsap-to");
             return from || to ? { from: from, to: to } : null;
         }
-        return { from: assign({}, PRESETS[k]), to: PRESET_ENDS[k] ? assign({}, PRESET_ENDS[k]) : null };
+        var to = PRESET_ENDS[k] ? assign({}, PRESET_ENDS[k]) : null;
+        if (k === "blur-in") {
+            // Remove the inline filter at the end, so a CSS filter applies again.
+            to.clearProps = "filter";
+        }
+        return { from: assign({}, PRESETS[k]), to: to };
+    }
+
+    // An end state with opacity 1 must use the CSS opacity of each target.
+    // Read it before the tween sets the start state.
+    function endOpacity(gsap, st, list) {
+        if (!st.to || st.to.opacity !== 1 || st.from.opacity === undefined) {
+            return;
+        }
+        var all = gsap.utils.toArray(list);
+        var values = all.map(function (t) {
+            return gsap.getProperty(t, "opacity");
+        });
+        st.to.opacity = function (i) {
+            return values[i];
+        };
+    }
+
+    // Marks `node` as handled and keeps its style attribute, for the history snapshot.
+    function claim(node, rec) {
+        node.setAttribute(INIT, "true");
+        rec.claimed.push(node);
+        rec.styles.push({ node: node, style: node.getAttribute("style") });
     }
 
     // The tween targets: split text units, direct children (stagger) or the element.
@@ -403,8 +430,15 @@
             if (read(el, "data-gsap-split-mask")) {
                 opts.mask = unit;
             }
+            var before = {
+                el: el,
+                html: el.innerHTML,
+                label: el.getAttribute("aria-label"),
+            };
             var parts = window.SplitText.create(el, opts)[unit];
             if (parts && parts.length) {
+                rec.splits.push(before);
+                rec.owns = true;
                 return { list: parts, split: true };
             }
         }
@@ -413,11 +447,11 @@
             for (var i = 0; i < el.children.length; i++) {
                 var c = el.children[i];
                 if (!c.hasAttribute(INIT)) {
-                    c.setAttribute(INIT, "true");
-                    rec.claimed.push(c);
+                    claim(c, rec);
                     kids.push(c);
                 }
             }
+            rec.owns = true;
             return { list: kids, split: false };
         }
         return { list: el, split: false };
@@ -505,6 +539,7 @@
         if (t.list.length === 0) {
             return;
         }
+        endOpacity(gsap, st, t.list);
         var v = timing(el, true);
         var stagger = staggerVars(el, t.split);
         if (stagger) {
@@ -530,14 +565,14 @@
             tv.scrollTrigger = trig;
         }
         var tl = gsap.timeline(tv);
+        rec.owns = true;
         var found = box.querySelectorAll("[data-gsap]");
         for (var i = 0; i < found.length; i++) {
             var child = found[i];
             if (child.hasAttribute(INIT) || child.closest(TIMELINE_SEL) !== box || ignored(child)) {
                 continue;
             }
-            child.setAttribute(INIT, "true");
-            rec.claimed.push(child);
+            claim(child, rec);
             var k = kindOf(child);
             var st = has(SPECIAL, k) && k !== "custom" ? null : states(child, k);
             if (st === null) {
@@ -548,6 +583,7 @@
             if (t.list.length === 0) {
                 continue;
             }
+            endOpacity(gsap, st, t.list);
             var v = timing(child, false);
             var stagger = staggerVars(child, t.split);
             if (stagger) {
@@ -561,6 +597,8 @@
     // ---- Records: one gsap.context per element, so htmx cleanup can revert it. ----
 
     var RECORDS = typeof WeakMap === "function" ? new WeakMap() : null;
+    // The live records, for the history snapshot. `release` removes a record.
+    var LIVE = typeof Set === "function" ? new Set() : null;
     var registered = false;
 
     function register(gsap) {
@@ -578,9 +616,9 @@
     }
 
     function start(gsap, el, fn) {
-        var rec = { claimed: [el], ctx: null };
+        var rec = { el: el, claimed: [], styles: [], splits: [], owns: false, ctx: null };
         var failed = null;
-        el.setAttribute(INIT, "true");
+        claim(el, rec);
         // Catch inside the context function. GSAP closes the context only when it returns.
         rec.ctx = gsap.context(function () {
             try {
@@ -599,6 +637,9 @@
         }
         if (RECORDS) {
             RECORDS.set(el, rec);
+        }
+        if (LIVE) {
+            LIVE.add(rec);
         }
         return true;
     }
@@ -660,13 +701,31 @@
         return count;
     }
 
-    function release(el) {
+    // Stops the animations of `el`. With `restore`, it also puts back the start DOM
+    // (styles, split text, pin spacers). Without it, the DOM stays as it is: use this
+    // while htmx removes the element, because a DOM change then breaks the swap.
+    function release(el, restore) {
         var rec = RECORDS && RECORDS.get(el);
         if (!rec) {
             return false;
         }
         RECORDS.delete(el);
-        rec.ctx.revert();
+        if (LIVE) {
+            LIVE.delete(rec);
+        }
+        if (restore) {
+            rec.ctx.revert();
+        } else {
+            rec.ctx.data.slice().forEach(function (d) {
+                // kill(false): ScrollTrigger keeps the DOM; tweens and SplitText stop.
+                if (d && typeof d.kill === "function") {
+                    d.kill(false);
+                }
+            });
+            if (typeof rec.ctx.clear === "function") {
+                rec.ctx.clear();
+            }
+        }
         rec.claimed.forEach(function (c) {
             c.removeAttribute(INIT);
         });
@@ -678,7 +737,7 @@
         var scope = root && root.querySelectorAll ? root : document;
         var count = 0;
         collect(scope, "[" + INIT + "]").forEach(function (el) {
-            if (release(el)) {
+            if (release(el, true)) {
                 count += 1;
             }
         });
@@ -736,47 +795,168 @@
         scan(eventElement(e));
     });
     document.addEventListener("htmx:beforeCleanupElement", function (e) {
-        release(eventElement(e));
+        // htmx removes this element now. Stop it, but do not change the DOM.
+        release(eventElement(e), false);
     });
-    document.addEventListener("htmx:afterSettle", refreshSoon);
+    document.addEventListener("htmx:afterSettle", function () {
+        // A swap can change the page height, also with no animated content.
+        dirty = true;
+        refreshSoon();
+    });
 
-    // Revert before htmx changes the DOM. A pin revert moves its element out of the pin
-    // spacer, so it must not happen during the swap. Scan the target again after the swap.
-    var swapped = typeof WeakSet === "function" ? new WeakSet() : null;
+    // The swap style of an htmx swap: the HX-Reswap override, the nearest hx-swap,
+    // or the htmx default.
+    function swapStyle(d) {
+        var spec = d.swapOverride;
+        if (!spec) {
+            // htmx sets `detail.elt` to the target. The trigger element is in requestConfig.
+            var src = (d.requestConfig && d.requestConfig.elt) || d.elt;
+            var holder = src && src.closest ? src.closest("[hx-swap],[data-hx-swap]") : null;
+            spec = holder ? holder.getAttribute("hx-swap") || holder.getAttribute("data-hx-swap") : null;
+        }
+        if (!spec) {
+            var h = window.htmx;
+            spec = (h && h.config && h.config.defaultSwapStyle) || "innerHTML";
+        }
+        return String(spec).trim().split(/\s+/)[0];
+    }
 
-    function beforeSwap(e) {
-        var target = e.detail && e.detail.target;
-        if (!target || (e.detail.shouldSwap === false) || !target.querySelectorAll) {
+    // Targets that init.js reverted before an outerHTML swap. If the swap does not
+    // come (a later listener cancels it), init.js scans them again.
+    var pendingOuter = [];
+    // Containers that animate their children (stagger, split, timeline). An innerHTML
+    // swap replaces the children, so init.js starts the container again after the swap.
+    var restartAfterSwap = typeof WeakSet === "function" ? new WeakSet() : null;
+
+    // Runs on the kebab-case event, so `hx-on::before-swap` handlers run first.
+    document.addEventListener("htmx:before-swap", function (e) {
+        var d = e.detail || {};
+        var target = d.target;
+        if (!target || d.shouldSwap === false || !target.querySelectorAll) {
             return;
         }
-        if (revert(target) > 0 && swapped) {
-            swapped.add(target);
-        }
-    }
-
-    function afterSwap(e) {
-        var target = e.detail && e.detail.target;
-        if (target && swapped && swapped.has(target)) {
-            swapped.delete(target);
-            if (target.isConnected) {
-                scan(target);
+        var style = swapStyle(d);
+        if (style === "outerHTML" || style === "delete") {
+            // The target leaves the page. Restore it now: a pin spacer must not wrap
+            // the new content.
+            if (revert(target) > 0) {
+                pendingOuter.push(target);
+            }
+        } else if (style === "innerHTML" || style === "textContent") {
+            var rec = RECORDS && RECORDS.get(target);
+            if (rec && rec.owns && restartAfterSwap) {
+                restartAfterSwap.add(target);
             }
         }
+    });
+
+    document.addEventListener("htmx:afterSwap", function (e) {
+        var target = e.detail && e.detail.target;
+        if (target && restartAfterSwap && restartAfterSwap.has(target)) {
+            restartAfterSwap.delete(target);
+            release(target, false);
+            scan(target);
+        }
+    });
+
+    document.addEventListener("htmx:afterRequest", function () {
+        setTimeout(function () {
+            var list = pendingOuter;
+            pendingOuter = [];
+            list.forEach(function (t) {
+                if (t.isConnected && !t.hasAttribute(INIT)) {
+                    scan(t);
+                }
+            });
+        }, 0);
+    });
+
+    // Removes the GSAP state from the DOM in `root` (inline styles, split text,
+    // init marks, pin spacers). Returns a function that puts the state back.
+    function detach(root) {
+        var undo = [];
+        if (LIVE) {
+            LIVE.forEach(function (rec) {
+                if (!rec.el.isConnected) {
+                    LIVE.delete(rec);
+                    return;
+                }
+                if (!root.contains(rec.el)) {
+                    return;
+                }
+                rec.splits.forEach(function (s) {
+                    var nodes = Array.prototype.slice.call(s.el.childNodes);
+                    var label = s.el.getAttribute("aria-label");
+                    s.el.innerHTML = s.html;
+                    setAttr(s.el, "aria-label", s.label);
+                    undo.push(function () {
+                        while (s.el.firstChild) {
+                            s.el.removeChild(s.el.firstChild);
+                        }
+                        nodes.forEach(function (n) {
+                            s.el.appendChild(n);
+                        });
+                        setAttr(s.el, "aria-label", label);
+                    });
+                });
+                rec.styles.forEach(function (x) {
+                    var now = x.node.getAttribute("style");
+                    setAttr(x.node, "style", x.style);
+                    undo.push(function () {
+                        setAttr(x.node, "style", now);
+                    });
+                });
+                rec.claimed.forEach(function (c) {
+                    c.removeAttribute(INIT);
+                    undo.push(function () {
+                        c.setAttribute(INIT, "true");
+                    });
+                });
+            });
+        }
+        var spacers = root.querySelectorAll(".pin-spacer");
+        for (var i = 0; i < spacers.length; i++) {
+            (function (sp) {
+                var child = sp.firstElementChild;
+                if (!child || !sp.parentNode) {
+                    return;
+                }
+                sp.parentNode.insertBefore(child, sp);
+                sp.parentNode.removeChild(sp);
+                undo.push(function () {
+                    if (child.parentNode) {
+                        child.parentNode.insertBefore(sp, child);
+                        sp.appendChild(child);
+                    }
+                });
+            })(spacers[i]);
+        }
+        return function () {
+            for (var j = undo.length - 1; j >= 0; j--) {
+                undo[j]();
+            }
+        };
     }
 
-    document.addEventListener("htmx:beforeSwap", beforeSwap);
-    document.addEventListener("htmx:oobBeforeSwap", beforeSwap);
-    document.addEventListener("htmx:afterSwap", afterSwap);
-    document.addEventListener("htmx:oobAfterSwap", afterSwap);
+    function setAttr(el, name, value) {
+        if (value === null) {
+            el.removeAttribute(name);
+        } else {
+            el.setAttribute(name, value);
+        }
+    }
 
-    // htmx saves the live DOM for the Back button. Save it without GSAP state
-    // (inline styles, split text, pin spacers), then start the animations again.
+    // htmx saves a copy of the page for the Back button right after this event.
+    // Remove the GSAP state for that copy only, and put it back in a microtask.
+    // The page does not change on screen, and Back gets clean content to animate.
     document.addEventListener("htmx:beforeHistorySave", function (e) {
         var elt = (e.detail && e.detail.historyElt) || document.body;
-        revert(elt);
-        setTimeout(function () {
-            scan(elt);
-        }, 0);
+        var putBack = detach(elt);
+        if (typeof queueMicrotask === "function") {
+            queueMicrotask(putBack);
+        } else {
+            Promise.resolve().then(putBack);
+        }
     });
 
     // A reduced-motion change after load: revert the animations (content stays visible),
@@ -786,7 +966,7 @@
         var onMotionChange = function () {
             if (mq.matches) {
                 collect(document, "[" + INIT + "]").forEach(function (el) {
-                    if (!optedIn(el) && release(el)) {
+                    if (!optedIn(el) && release(el, true)) {
                         dirty = true;
                     }
                 });
@@ -803,7 +983,10 @@
 
     // A pin adds height after the browser restores the scroll position on reload.
     // Keep the position in sessionStorage and set it again after the first scan.
-    var SCROLL_KEY = "autumn-gsap-scroll:" + (window.location ? window.location.pathname : "");
+    function scrollKey() {
+        var l = window.location;
+        return "autumn-gsap-scroll:" + (l ? l.pathname + l.search : "");
+    }
 
     function storage() {
         try {
@@ -817,7 +1000,7 @@
         var s = storage();
         if (s) {
             try {
-                s.setItem(SCROLL_KEY, String(window.scrollY));
+                s.setItem(scrollKey(), String(window.scrollY));
             } catch (e) {
                 // Storage is full or blocked. The browser restores the position.
             }
@@ -833,7 +1016,7 @@
         var nav = window.performance && performance.getEntriesByType
             ? performance.getEntriesByType("navigation")[0]
             : null;
-        var saved = s ? s.getItem(SCROLL_KEY) : null;
+        var saved = s ? s.getItem(scrollKey()) : null;
         if (!nav || nav.type !== "reload" || saved === null || window.location.hash) {
             return;
         }

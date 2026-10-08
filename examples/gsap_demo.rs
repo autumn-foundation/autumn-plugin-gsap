@@ -42,7 +42,7 @@ async fn main() {
     autumn_web::app()
         .plugin(GsapPlugin::new())
         .embedded_static(&STATIC)
-        .routes(autumn_web::routes![index, about, more, swap])
+        .routes(autumn_web::routes![index, about, more, swap, plain])
         .run()
         .await;
 }
@@ -206,6 +206,12 @@ async fn about() -> Markup {
         (Gsap::fade_up().play(Play::Load).id("about").wrap_in(Tag::H1, html! { "About" }))
         a href="/" hx-boost="true" { "Back to the demo" }
     })
+}
+
+/// htmx partial with no animation. The e2e tests use it to change the page height.
+#[autumn_web::get("/plain")]
+async fn plain() -> Markup {
+    html! { p class="plain" { "Plain content." } }
 }
 
 /// htmx partial: one more batch. It is a stagger container.

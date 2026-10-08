@@ -76,6 +76,11 @@ fn num_constant_matches_the_pattern_table() {
 #[test]
 fn init_js_uses_the_same_patterns() {
     let js = include_str!("../assets/init.js");
+    assert_eq!(
+        js.matches("    var RE_").count(),
+        PATTERNS.len(),
+        "each RE_* pattern in init.js needs a line in PATTERNS"
+    );
     for (name, src) in PATTERNS {
         let line = format!("var {name} = /^({src})$/;");
         assert!(js.contains(&line), "init.js must contain: {line}");

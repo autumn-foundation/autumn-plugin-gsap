@@ -5,7 +5,7 @@ You write Rust and Maud. You need no npm, no bundler and no JavaScript.
 
 - The crate includes GSAP 3.15.0, ScrollTrigger and SplitText.
 - The plugin serves them through the plugin asset seam of Autumn: hashed URLs, SRI, immutable cache.
-- Typed builders: `Gsap`, `Timeline`, `Parallax`, `Ease`, `ScrollPos`, `Position`, `Props`, `Tag`.
+- Builders: `Gsap`, `Timeline`, `Parallax`. Typed values: `Ease`, `ScrollPos`, `Position`, `Props`, `Tag`.
 - htmx: new content animates. `init.js` reverts the animations of removed content.
 - Elements do not animate when the user prefers reduced motion.
 - The plugin works with a strict CSP.
@@ -105,14 +105,19 @@ Timeline::new().wrap_in(Tag::Section, html! {
 - The timeline options (`play`, `scrub`, `pin`, `repeat`, ...) apply to the full sequence.
 - The `duration` and `ease` of the timeline are defaults for the steps.
 - On a step, `init.js` ignores the ScrollTrigger options and `data-gsap-reduced`.
+- `Parallax` and the progress bar cannot be timeline steps.
 
 ### htmx
 
 - `init.js` scans each `htmx:load` element. Thus server-rendered partials animate with no extra code.
-- Before a swap, `init.js` reverts the animations in the swap target. After the swap, it scans the target again.
-- On `htmx:beforeCleanupElement`, it reverts the tweens, ScrollTriggers and SplitText of removed content.
-- Before htmx saves a page for the Back button, `init.js` reverts the animations. Back then plays them again.
-- After `htmx:afterSettle`, it refreshes the ScrollTrigger positions when something changed.
+- On `htmx:beforeCleanupElement`, it stops the tweens, ScrollTriggers and SplitText of removed content.
+- Before an `outerHTML` or `delete` swap, it restores the target, so a pin spacer does not wrap the new content.
+  If a later listener cancels the swap, `init.js` starts the target again.
+- After an `innerHTML` swap into a stagger, split or timeline container, it starts the container again.
+- Content that stays on the page (for example with `beforeend`) does not play again.
+- htmx keeps a copy of the page for the Back button. `init.js` removes the GSAP state from that copy only.
+  The page on screen does not change. After Back, the restored content animates again.
+- After each `htmx:afterSettle`, it refreshes the ScrollTrigger positions.
 
 ```rust
 #[get("/more")]
@@ -224,6 +229,9 @@ After a change to an attribute value, run `UPDATE_GOLDEN=1 cargo test --test gol
 - Each element gets its own tween and ScrollTrigger. A scan of 200 elements takes about 80 ms;
   1000 elements take about 650 ms. For long lists, animate a container with a stagger.
 - htmx Back plays the animations of the restored page again.
+- With a swap delay (`hx-swap="outerHTML swap:500ms"`) on a pinned target, the pin can wrap the new content.
+  Use no delay for pinned targets.
+- An out-of-band swap (`hx-swap-oob`) of a pinned element has the same limit.
 
 ## Untrusted content
 
