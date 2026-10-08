@@ -413,7 +413,7 @@ mod tests {
         sorted.dedup();
         assert_eq!(sorted.len(), names.len());
         for n in names {
-            assert!(!n.is_empty());
+            assert_ne!(n, "");
             assert!(
                 n.bytes().all(|b| b.is_ascii_lowercase() || b == b'-'),
                 "{n}"

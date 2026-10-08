@@ -214,7 +214,7 @@ mod tests {
         let mut out = Vec::new();
         push_flag(&mut out, "data-gsap-pin", false);
         push_opt(&mut out, "data-gsap-end", None);
-        assert!(out.is_empty());
+        assert_eq!(out, Vec::<Attr>::new());
         push_flag(&mut out, "data-gsap-pin", true);
         push_opt(&mut out, "data-gsap-end", Some("bottom top".to_owned()));
         assert_eq!(

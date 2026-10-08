@@ -16,7 +16,7 @@ jobs:
     name: fmt, clippy, test, doc
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -28,11 +28,22 @@ jobs:
         env:
           RUSTDOCFLAGS: -D warnings
 
+  msrv:
+    name: MSRV (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.88"
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo check --all-targets
+
   coverage:
     name: coverage (>= 85% lines)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: llvm-tools-preview
@@ -46,8 +57,8 @@ jobs:
     name: init.js unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: node --test tests/js/*.test.mjs
@@ -56,10 +67,10 @@ jobs:
     name: browser e2e (Playwright)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - run: cargo build --example gsap_demo
