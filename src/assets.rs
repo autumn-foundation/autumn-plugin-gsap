@@ -1,12 +1,12 @@
 //! Vendored GSAP files, embedded at compile time.
 //!
 //! [`GSAP_ASSETS`] holds the upstream GSAP builds and the plugin files.
-//! [`GsapPlugin`](crate::GsapPlugin) installs it through the Autumn
-//! `AppBuilder::plugin_assets` seam. The framework serves each file under
-//! `/static/_plugins/gsap/` at a hashed URL (immutable) and a plain URL
-//! (`must-revalidate`), with `ETag`/`304`, `Range` and a computed `sha384` SRI hash.
+//! [`GsapPlugin`](crate::GsapPlugin) installs it with `AppBuilder::plugin_assets`.
+//! The framework serves each file under `/static/_plugins/gsap/`.
+//! Each file has a hashed URL (immutable) and a plain URL (`must-revalidate`).
+//! Both URLs send `ETag`/`304`, `Range` and a computed `sha384` SRI hash.
 //!
-//! The bundle lists its files one by one. Thus `manifest.json` is not served.
+//! The bundle lists its files one by one. Thus the framework does not serve `manifest.json`.
 
 use autumn_web::assets::PluginAssets;
 

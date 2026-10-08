@@ -6,7 +6,7 @@ use crate::fmt::num;
 /// [`Gsap::to_props`](crate::Gsap::to_props) and [`Gsap::from_to`](crate::Gsap::from_to).
 ///
 /// Each setter sets one GSAP property. Lengths are pixels, angles are degrees.
-/// A value that is not finite is not written.
+/// The builder does not write a value that is not finite.
 ///
 /// ```rust
 /// use autumn_plugin_gsap::Props;

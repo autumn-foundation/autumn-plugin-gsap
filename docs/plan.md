@@ -1,6 +1,7 @@
 # Plan: autumn-plugin-gsap 0.1.0
 
 Status: done. Target: autumn-web 0.8.0, GSAP 3.15.0.
+The AC evidence table is in the PR description.
 Prior art: [autumn-plugin-motion](https://github.com/madmax983/autumn-plugin-motion).
 
 ## 1. Goal
@@ -54,7 +55,7 @@ One script (`init.js`) reads the attributes and calls GSAP.
   Autumn 0.8 ships htmx 2 and the `PluginAssets` seam. The default CSP is `script-src 'self'`.
 - **Red (feelings):** Users want "add one line, it moves". The API must feel like GSAP, not like a new tool.
   So attribute names follow GSAP names (`scrub`, `pin`, `start`, `toggle-actions`).
-- **Black (risks):** License terms prohibit no-code visual builders. This crate is a code API, so it is permitted.
+- **Black (risks):** The license does not allow no-code visual builders. This crate is a code API. The license allows it.
   The README tells users about the terms. Bundle size is about 125 KB of JS.
   `gsap_script()` loads ScrollTrigger and SplitText too. That cost is small and keeps setup to one call.
 - **Yellow (benefits):** Timelines and ScrollTrigger are stronger than the Motion plugin.
@@ -74,7 +75,7 @@ Out of scope for 0.1.0: `Flip`, `Draggable`, `ScrollSmoother`, `MorphSVG`, `Draw
 ## 6. Acceptance criteria
 
 1. `GsapPlugin` installs the bundle. All files serve under `/static/_plugins/gsap/` with hashed, immutable URLs, ETag/304 and SRI.
-2. `manifest.json` is not served. The bundle does not force `embed-assets` on the host.
+2. The plugin does not serve `manifest.json`. The bundle does not force `embed-assets` on the host.
 3. A test pins the `sha384` of each vendored upstream file. The manifest records version, source URL and license.
 4. `gsap_script()` emits deferred, SRI tags in this order: gsap, ScrollTrigger, SplitText, init. `gsap_stylesheet()` emits the CSS link.
 5. The `Gsap` builder covers presets, `Duration` times, typed `Ease`, repeat/yoyo, ScrollTrigger options, stagger, SplitText, custom `Props`, parallax and the progress bar.

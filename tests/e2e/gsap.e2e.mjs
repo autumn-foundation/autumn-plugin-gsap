@@ -6,28 +6,54 @@
 import { after, before, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { createWriteStream, existsSync, mkdirSync } from "node:fs";
+import { createServer } from "node:net";
 import { chromium } from "playwright";
 
 const ROOT = new URL("../../", import.meta.url).pathname;
 const BIN = process.env.DEMO_BIN || `${ROOT}target/debug/examples/gsap_demo`;
 const STRICT_CSP = "default-src 'self'; style-src 'self'; script-src 'self'";
 
+const LOGS = `${ROOT}tests/e2e/test-results`;
+// Minimum line coverage of init.js over the whole e2e run.
+const MIN_INIT_JS_LINES = 85;
+
 const servers = [];
 let browser;
 
-async function startServer(port, env = {}) {
+// Asks the OS for a free port.
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = createServer();
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+async function startServer(env = {}) {
+  const port = await freePort();
+  mkdirSync(LOGS, { recursive: true });
+  const log = createWriteStream(`${LOGS}/server-${port}.log`);
   const child = spawn(BIN, [], {
     cwd: ROOT,
-    env: { ...process.env, AUTUMN_SERVER__PORT: String(port), ...env },
-    stdio: "ignore",
+    env: { ...process.env, AUTUMN_SERVER__PORT: String(port), NO_COLOR: "1", ...env },
+    stdio: ["ignore", "pipe", "pipe"],
   });
+  child.stdout.pipe(log);
+  child.stderr.pipe(log);
   servers.push(child);
   const url = `http://127.0.0.1:${port}`;
   for (let i = 0; i < 100; i++) {
+    if (child.exitCode !== null) {
+      throw new Error(`demo exited with ${child.exitCode}; see ${LOGS}/server-${port}.log`);
+    }
     try {
       const res = await fetch(url);
-      if (res.ok) {
+      // Check that this is our demo, not another server on the port.
+      if (res.ok && (await res.text()).includes("<title>GSAP demo</title>")) {
         return url;
       }
     } catch {
@@ -38,10 +64,60 @@ async function startServer(port, env = {}) {
   throw new Error(`demo did not start on ${url}`);
 }
 
+// V8 block coverage of init.js: the highest count for each source character.
+const coverage = { source: null, counts: null };
+
+function mergeCoverage(entries) {
+  for (const entry of entries) {
+    if (!/\/_plugins\/gsap\/init\.[0-9a-f]{8}\.js$/.test(entry.url)) continue;
+    const src = entry.source;
+    if (coverage.source === null) {
+      coverage.source = src;
+      coverage.counts = new Uint32Array(src.length);
+    }
+    const run = new Uint32Array(src.length);
+    // Paint outer ranges first, then the nested ranges over them.
+    const ranges = entry.functions
+      .flatMap((f) => f.ranges)
+      .sort((a, b) => a.startOffset - b.startOffset || b.endOffset - a.endOffset);
+    for (const r of ranges) run.fill(r.count, r.startOffset, r.endOffset);
+    for (let i = 0; i < run.length; i++) {
+      if (run[i] > coverage.counts[i]) coverage.counts[i] = run[i];
+    }
+  }
+}
+
+// Line coverage: a code line is covered when one of its characters ran.
+function lineCoverage() {
+  let offset = 0;
+  let code = 0;
+  let hit = 0;
+  for (const line of coverage.source.split("\n")) {
+    const t = line.trim();
+    const comment = t.startsWith("//") || t.startsWith("/*") || t.startsWith("*");
+    if (t !== "" && !comment) {
+      code += 1;
+      let covered = false;
+      for (let i = 0; i < line.length && !covered; i++) {
+        covered = line[i] !== " " && coverage.counts[offset + i] > 0;
+      }
+      if (covered) hit += 1;
+    }
+    offset += line.length + 1;
+  }
+  return { code, hit, pct: (100 * hit) / code };
+}
+
 // Opens the page and records console errors, page errors and CSP violations.
 async function open(url, options = {}) {
   const context = await browser.newContext({ viewport: { width: 1200, height: 800 }, ...options });
   const page = await context.newPage();
+  await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  const close = context.close.bind(context);
+  context.close = async () => {
+    mergeCoverage(await page.coverage.stopJSCoverage());
+    return close();
+  };
   const errors = [];
   const warnings = [];
   // Playwright gives the raw format string and arguments, joined by spaces.
@@ -56,9 +132,9 @@ async function open(url, options = {}) {
       window.__csp.push(`${e.violatedDirective} ${e.blockedURI} ${e.sourceFile}:${e.lineNumber}`);
     });
   });
-  await page.goto(url);
+  const response = await page.goto(url);
   await page.waitForFunction(() => window.AutumnGsap && window.htmx);
-  return { page, context, errors, warnings };
+  return { page, context, errors, warnings, response };
 }
 
 const opacity = (page, sel) =>
@@ -95,9 +171,8 @@ let strictUrl;
 
 before(async () => {
   assert.ok(existsSync(BIN), `build the demo first: cargo build --example gsap_demo (${BIN})`);
-  const base = 41000 + (process.pid % 1000) * 2;
-  url = await startServer(base);
-  strictUrl = await startServer(base + 1, {
+  url = await startServer();
+  strictUrl = await startServer({
     AUTUMN_SECURITY__HEADERS__CONTENT_SECURITY_POLICY: STRICT_CSP,
   });
   browser = await chromium.launch(
@@ -110,6 +185,10 @@ after(async () => {
   for (const s of servers) {
     s.kill();
   }
+  assert.ok(coverage.source, "the e2e run loaded init.js");
+  const { code, hit, pct } = lineCoverage();
+  console.log(`# init.js line coverage: ${pct.toFixed(1)}% (${hit}/${code})`);
+  assert.ok(pct >= MIN_INIT_JS_LINES, `init.js line coverage ${pct.toFixed(1)}% < ${MIN_INIT_JS_LINES}%`);
 });
 
 describe("default CSP", () => {
@@ -169,7 +248,7 @@ describe("default CSP", () => {
     await context.close();
   });
 
-  test("a card is hidden below the fold and reveals on scroll", async () => {
+  test("a card below the fold starts hidden and appears on scroll", async () => {
     const { page, context } = await open(url);
     for (const sel of ["#card-fade-up", "#card-custom", "#card-raw"]) {
       assert.ok((await opacity(page, sel)) < 0.05, `${sel} starts hidden`);
@@ -228,7 +307,7 @@ describe("default CSP", () => {
     await context.close();
   });
 
-  test("htmx content animates and removed content is reverted", async () => {
+  test("htmx content animates and init.js reverts removed content", async () => {
     const { page, context, errors } = await open(url);
     await scrollTo(page, "#htmx");
     await page.evaluate(() => {
@@ -484,6 +563,13 @@ describe("accessibility and layout", () => {
     await context.close();
   });
 
+  test("the demo has no horizontal scroll on a phone", async () => {
+    const { page, context } = await open(url, { viewport: { width: 375, height: 800 } });
+    const width = await page.evaluate(() => document.documentElement.scrollWidth);
+    assert.equal(width, 375);
+    await context.close();
+  });
+
   test("print shows all content", async () => {
     const { page, context } = await open(url);
     await page.emulateMedia({ media: "print" });
@@ -598,7 +684,8 @@ describe("reduced motion", () => {
 
 describe("strict CSP (no inline styles or scripts)", () => {
   test("animations work with no CSP violations", async () => {
-    const { page, context, errors } = await open(strictUrl);
+    const { page, context, errors, response } = await open(strictUrl);
+    assert.equal(response.headers()["content-security-policy"], STRICT_CSP);
     await waitOpaque(page, "#lede");
     await scrollTo(page, "#card-fade-up");
     await waitOpaque(page, "#card-fade-up");

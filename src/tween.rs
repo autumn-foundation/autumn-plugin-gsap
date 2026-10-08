@@ -399,7 +399,7 @@ impl Parallax {
         self
     }
 
-    /// Animates also when the user prefers reduced motion (`data-gsap-reduced="animate"`).
+    /// Also animates when the user prefers reduced motion (`data-gsap-reduced="animate"`).
     pub const fn animate_on_reduced_motion(mut self) -> Self {
         self.animate_reduced = true;
         self

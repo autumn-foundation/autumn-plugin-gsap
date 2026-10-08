@@ -22,13 +22,13 @@ pub enum Position {
     /// With no position, a step starts at the end of the timeline.
     /// The two differ after a `<` or an overlap step.
     After,
-    /// When the previous tween starts (`<`).
+    /// When the most recent step starts (`<`).
     WithPrevious,
-    /// This time after the previous tween starts (`<0.2`).
+    /// This time after the most recent step starts (`<0.2`).
     AfterPreviousStart(Duration),
-    /// This time after the previous tween ends (`+=0.2`).
+    /// This time after the end of the timeline (`+=0.2`).
     Gap(Duration),
-    /// This time before the previous tween ends (`-=0.2`).
+    /// This time before the end of the timeline (`-=0.2`).
     Overlap(Duration),
     /// At this time from the timeline start (`1.5`).
     At(Duration),

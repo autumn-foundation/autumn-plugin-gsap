@@ -6,14 +6,14 @@
 //! cargo run --example gsap_demo
 //! ```
 //!
-//! The page shows:
+//! The page shows these items:
 //!
-//! - a hero timeline that plays on load (split text, then a stagger),
-//! - cards that reveal on scroll (presets, custom props, a 3D flip),
-//! - a pinned section with a scrubbed timeline,
-//! - parallax art and a scroll progress bar,
-//! - htmx "Load more" (append) and "Replace" (swap) buttons.
-//!   New content animates. Removed content is reverted.
+//! - A hero timeline plays on load. It splits the heading, then staggers the text.
+//! - Cards appear on scroll. They use presets, custom props and a 3D flip.
+//! - A pinned section plays a scrubbed timeline.
+//! - Parallax art and a scroll progress bar follow the scroll.
+//! - htmx buttons add ("Load more") and replace ("Replace") content.
+//!   New content animates. init.js reverts the animations of removed content.
 //!
 //! All JS and CSS are files, so the page works with the default Autumn CSP.
 
@@ -65,6 +65,10 @@ fn layout(content: &Markup) -> Markup {
             body {
                 (Gsap::scroll_progress())
                 main class="wrap" { (content) }
+                footer class="wrap" {
+                    // A boosted link: htmx keeps this page in its history cache. Back restores it.
+                    a href="/about" hx-boost="true" id="about-link" { "About" }
+                }
             }
         }
     }
@@ -121,6 +125,7 @@ fn cards() -> Markup {
                 .stagger(ms(80))
                 .stagger_from(StaggerFrom::Center)
                 .id("chips")
+                .class("chips")
                 .wrap_in(Tag::Ul, html! {
                     @for n in 1..=6 { li class="chip" { "chip " (n) } }
                 }))
@@ -147,7 +152,7 @@ fn pinned() -> Markup {
                 (Gsap::to_props(Props::new().x_percent(-60.0).rotation(-4.0))
                     .class("band")
                     .wrap(html! { "Pinned. Scrubbed. Typed." }))
-                (Gsap::to_props(Props::new().scale(1.4).opacity(0.25))
+                (Gsap::to_props(Props::new().scale(1.4).opacity(0.1))
                     .position(Position::WithPrevious)
                     .class("orb")
                     .wrap(html! {}))
@@ -164,7 +169,7 @@ async fn index() -> Markup {
         (pinned())
         section id="htmx" class="htmx-zone" {
             h2 { "htmx" }
-            p { "New content animates on htmx:load. Removed content is reverted." }
+            p { "New content animates on htmx:load. init.js reverts removed content." }
             div class="buttons" {
                 button hx-get="/more" hx-target="#more" hx-swap="beforeend" id="load-more" {
                     "Load more"
@@ -173,13 +178,11 @@ async fn index() -> Markup {
                     "Replace"
                 }
             }
-            div id="more" {}
-            div id="swap" { (swap_panel(0)) }
+            // aria-live: screen readers announce the new content.
+            div id="more" aria-live="polite" {}
+            div id="swap" aria-live="polite" { (swap_panel(0)) }
         }
-        footer {
-            // A boosted link: htmx saves this page in its history cache. Back restores it.
-            a href="/about" hx-boost="true" id="about-link" { "About" }
-        }
+        p class="end" { "End." }
     })
 }
 

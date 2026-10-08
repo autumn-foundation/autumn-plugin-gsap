@@ -1,5 +1,8 @@
 name: CI
 
+# Pipeline: fmt -> clippy -> test (rust) -> coverage and e2e.
+# The Rust version is pinned. A new stable release can add lints; update the pin on purpose.
+
 on:
   push:
     branches: [main]
@@ -10,29 +13,39 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_VERSION: "1.99.0"
 
 jobs:
   rust:
     name: fmt, clippy, test, doc
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
         with:
+          toolchain: ${{ env.RUST_VERSION }}
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - run: cargo fmt --all --check
-      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo clippy --locked --all-targets -- -D warnings
       - run: cargo test --locked
-      - run: cargo doc --no-deps
+      - run: cargo doc --locked --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
+      - name: The plugin does not turn on embed-assets for the host app
+        run: |
+          if cargo tree --locked -e normal,features -i autumn-web | grep -q embed-assets; then
+            echo "autumn-web embed-assets is on in normal dependencies" >&2
+            exit 1
+          fi
 
   msrv:
     name: MSRV (1.88)
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
@@ -41,27 +54,12 @@ jobs:
         with:
           toolchain: "1.88"
       - uses: Swatinem/rust-cache@v2
-      - run: cargo check --all-targets
-
-  coverage:
-    name: coverage (>= 85% lines)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-        with:
-          persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          components: llvm-tools-preview
-      - uses: Swatinem/rust-cache@v2
-      - uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-llvm-cov
-      - run: cargo llvm-cov --fail-under-lines 85 --summary-only
+      - run: cargo check --locked --all-targets
 
   js:
     name: init.js unit tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
@@ -74,6 +72,7 @@ jobs:
   upstream:
     name: vendored GSAP files match npm
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
         with:
@@ -88,20 +87,51 @@ jobs:
             cmp "$dir/package/dist/$f" "assets/$f"
           done
 
-  e2e:
-    name: browser e2e (Playwright)
+  coverage:
+    name: coverage (>= 85% lines)
+    needs: rust
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v5
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          components: llvm-tools-preview
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov
+      - run: cargo llvm-cov --locked --fail-under-lines 85 --summary-only
+
+  e2e:
+    name: browser e2e (Playwright, init.js coverage >= 85%)
+    needs: [rust, js]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
       - uses: Swatinem/rust-cache@v2
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-      - run: cargo build --example gsap_demo
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+      - run: cargo build --locked --example gsap_demo
       - run: npm --prefix tests/e2e ci
       - run: npx playwright install --with-deps chromium
         working-directory: tests/e2e
       - run: npm --prefix tests/e2e test
+      - name: Upload the demo server logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-server-logs
+          path: tests/e2e/test-results/

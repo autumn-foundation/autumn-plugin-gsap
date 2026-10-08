@@ -17,10 +17,13 @@ Autumn plugin for GSAP. Rust crate plus one JS file (`assets/init.js`).
 ## Rules
 
 - Write tests first (red, green, refactor).
-- A new attribute needs: a builder method, a parser in `init.js` (`PARSERS`), a golden case, docs in README.
+- A new attribute needs a parser in `init.js` (`PARSERS`) and a README row.
+  When Rust writes it, it also needs a builder method and a golden case.
+- A new `RE_*` pattern in `init.js` needs the same line in `src/grammar.rs`.
 - After an attribute change, run `UPDATE_GOLDEN=1 cargo test --test golden`.
 - Do not change the vendored GSAP files. To upgrade, replace them, then update the pins and `manifest.json`.
 - No inline scripts or styles in the demo. The e2e tests run it with a strict CSP.
+- In e2e runs, stop only your own demo server. `pkill -x gsap_demo` stops other runs too.
 - Docs and comments: short, active voice, ASD-STE100 style.
 
 ## Checks
@@ -31,6 +34,6 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps
 node --test tests/js/*.test.mjs
-cargo build --example gsap_demo && npm --prefix tests/e2e ci && npm --prefix tests/e2e test
+cargo build --example gsap_demo && npm --prefix tests/e2e ci && npm --prefix tests/e2e test  # also gates init.js coverage
 cargo llvm-cov --fail-under-lines 85
 ```

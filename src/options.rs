@@ -232,7 +232,7 @@ macro_rules! common_setters {
             crate::attrs::wrap_el(tag, &attrs, &markup)
         }
 
-        /// Animates also when the user prefers reduced motion
+        /// Also animates when the user prefers reduced motion
         /// (`data-gsap-reduced="animate"`). Use this only for motion that is necessary.
         pub const fn animate_on_reduced_motion(mut self) -> Self {
             self.common.animate_reduced = true;
