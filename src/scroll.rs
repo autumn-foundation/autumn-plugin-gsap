@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::fmt::{num, secs};
 
 /// When an animation starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum Play {
     /// When the trigger scrolls into view (default).
     #[default]
@@ -59,7 +59,7 @@ pub enum ScrollPos {
         /// The edge of the viewport.
         viewport: Edge,
     },
-    /// Pixels of scroll after `start` (only for `end`).
+    /// Pixels of scroll after `start`. Use it only for `end`.
     /// A value that is not finite or below zero writes `+=0`.
     Distance(f32),
 }
@@ -85,7 +85,7 @@ impl fmt::Display for ScrollPos {
 }
 
 /// One ScrollTrigger toggle action.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Action {
     /// Play forward.
     Play,
@@ -129,7 +129,7 @@ impl Action {
 /// let t = ToggleActions::new(Action::Play, Action::None, Action::None, Action::Reverse);
 /// assert_eq!(t.to_string(), "play none none reverse");
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ToggleActions {
     /// The trigger scrolls in, forward.
     pub on_enter: Action,
@@ -173,7 +173,7 @@ impl fmt::Display for ToggleActions {
 }
 
 /// ScrollTrigger `scrub`: link the animation progress to the scroll position.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Scrub {
     /// Follow the scroll position directly (`true`).
     Linked,

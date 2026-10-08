@@ -5,7 +5,7 @@ use std::fmt;
 use crate::fmt::num;
 
 /// The direction of an [`Ease`] curve.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum EaseDir {
     /// Slow start.
     In,
@@ -36,6 +36,7 @@ impl EaseDir {
 /// assert_eq!(Ease::Steps(5).to_string(), "steps(5)");
 /// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[non_exhaustive]
 pub enum Ease {
     /// Constant speed (`none`).
     None,

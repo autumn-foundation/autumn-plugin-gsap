@@ -38,7 +38,6 @@ fn cases() -> Vec<Case> {
 fn preset_cases() -> Vec<Case> {
     Preset::ALL
         .iter()
-        .filter(|p| !matches!(p, Preset::Custom | Preset::Parallax))
         .map(|p| {
             (
                 format!("preset-{}", p.name()),
@@ -191,6 +190,24 @@ fn custom_cases() -> Vec<Case> {
             .attributes(),
         ),
         ("parallax".to_owned(), Gsap::parallax(-0.3).attributes()),
+        (
+            "parallax-reduced".to_owned(),
+            Gsap::parallax(0.2).animate_on_reduced_motion().attributes(),
+        ),
+        (
+            "custom-to-only".to_owned(),
+            Gsap::to_props(Props::new().rotation(360.0)).attributes(),
+        ),
+        (
+            "zero-times".to_owned(),
+            Gsap::fade()
+                .duration(ms(0))
+                .delay(ms(0))
+                .repeat(Repeat::Times(0))
+                .repeat_delay(ms(0))
+                .stagger(ms(0))
+                .attributes(),
+        ),
     ]
 }
 
@@ -210,6 +227,23 @@ fn timeline_cases() -> Vec<Case> {
             Gsap::fade().position(p).attributes(),
         ));
     }
+    out.push((
+        "timeline-scroll".to_owned(),
+        Timeline::new()
+            .delay(ms(100))
+            .repeat_delay(ms(200))
+            .trigger("#stage")
+            .toggle_actions(ToggleActions::new(
+                Action::Play,
+                Action::Pause,
+                Action::Resume,
+                Action::Reset,
+            ))
+            .replay()
+            .markers()
+            .animate_on_reduced_motion()
+            .attributes(),
+    ));
     out.push((
         "timeline".to_owned(),
         Timeline::new()

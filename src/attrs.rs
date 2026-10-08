@@ -13,7 +13,8 @@ pub type Attr = (&'static str, String);
 ///
 /// Put the animation on the semantic element. For example, put SplitText on the
 /// heading itself, so its `aria-label` is on the heading.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[non_exhaustive]
 pub enum Tag {
     /// `<div>` (default).
     #[default]
@@ -42,7 +43,7 @@ pub enum Tag {
     Ol,
     /// `<li>`.
     Li,
-    /// `<p>`.
+    /// `<p>`. Put only inline content in it. The HTML parser closes a `<p>` before a `<div>`.
     P,
     /// `<span>`.
     Span,
@@ -62,7 +63,7 @@ pub enum Tag {
 
 impl Tag {
     /// All tags, in declaration order.
-    pub const ALL: [Self; 21] = [
+    pub const ALL: &'static [Self] = &[
         Self::Div,
         Self::Section,
         Self::Article,

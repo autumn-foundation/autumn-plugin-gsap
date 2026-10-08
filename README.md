@@ -79,7 +79,7 @@ Gsap::fade().start(ScrollPos::new(Edge::Top, Edge::Center));    // start: "top c
 Gsap::fade().replay();                                          // play again on each entry
 Gsap::fade().scrub(Scrub::Smooth(ms(500))).pin();               // link to the scroll, pin
 Gsap::fade().trigger("#hero").markers();                        // another trigger, debug markers
-Gsap::parallax(0.3);                                            // drift 30% of its height
+Gsap::parallax(0.3);                                            // drift 30% of its height (a `Parallax`)
 Gsap::scroll_progress();                                        // a page progress bar
 ```
 
@@ -99,6 +99,7 @@ Timeline::new().wrap_in(Tag::Section, html! {
 
 The timeline options (`play`, `scrub`, `pin`, `repeat`, ...) apply to the full sequence.
 Its `duration` and `ease` are defaults for the steps.
+On a step, `init.js` ignores the ScrollTrigger options.
 
 ### htmx
 
@@ -149,7 +150,7 @@ The builders write these attributes. You can also write them by hand.
 | `data-gsap-split` | `chars`, `words`, `lines` | — |
 | `data-gsap-split-mask` | bare | — |
 | `data-gsap-parallax` | a factor, for example `-0.3` | `0.3` |
-| `data-gsap-position` | `<`, `>`, `<0.2`, `+=0.5`, `-=0.2`, `1.5` | `>` |
+| `data-gsap-position` | `<`, `>`, `<0.2`, `+=0.5`, `-=0.2`, `1.5` (only in a timeline) | the end of the timeline |
 | `data-gsap-reduced` | `animate` | skip for reduced motion |
 | `data-gsap-timeline` | bare, on the timeline element | — |
 | `data-gsap-ignore` | bare, on a region that must not animate | — |

@@ -53,7 +53,9 @@ mod scroll;
 mod timeline;
 mod tween;
 
-pub use assets::{ASSETS_NAMESPACE, GSAP_ASSETS, GSAP_LICENSE, GSAP_UPSTREAM, GSAP_VERSION};
+pub use assets::{
+    ASSETS_NAMESPACE, GSAP_ASSETS, GSAP_LICENSE, GSAP_UPSTREAM, GSAP_VERSION, UpstreamFile,
+};
 pub use attrs::{Attr, Tag};
 pub use ease::{Ease, EaseDir};
 pub use options::Repeat;
@@ -62,4 +64,4 @@ pub use props::Props;
 pub use script::{gsap_script, gsap_stylesheet};
 pub use scroll::{Action, Edge, Play, ScrollPos, Scrub, ToggleActions};
 pub use timeline::{Position, Timeline};
-pub use tween::{Gsap, Preset, Split, StaggerFrom};
+pub use tween::{Gsap, Parallax, Preset, Split, StaggerFrom};

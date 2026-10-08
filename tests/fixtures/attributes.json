@@ -13,6 +13,16 @@
       "{\"x\":0,\"opacity\":1}"
     ]
   ],
+  "custom-to-only": [
+    [
+      "data-gsap",
+      "custom"
+    ],
+    [
+      "data-gsap-to",
+      "{\"rotation\":360}"
+    ]
+  ],
   "ease-back.in(2.5)": [
     [
       "data-gsap",
@@ -541,6 +551,20 @@
       "-0.3"
     ]
   ],
+  "parallax-reduced": [
+    [
+      "data-gsap",
+      "parallax"
+    ],
+    [
+      "data-gsap-parallax",
+      "0.2"
+    ],
+    [
+      "data-gsap-reduced",
+      "animate"
+    ]
+  ],
   "position-+=0.5": [
     [
       "data-gsap",
@@ -595,6 +619,10 @@
     [
       "data-gsap",
       "fade"
+    ],
+    [
+      "data-gsap-position",
+      ">"
     ]
   ],
   "preset-blur-in": [
@@ -1119,6 +1147,40 @@
       ""
     ]
   ],
+  "timeline-scroll": [
+    [
+      "data-gsap-timeline",
+      ""
+    ],
+    [
+      "data-gsap-delay",
+      "0.1"
+    ],
+    [
+      "data-gsap-repeat-delay",
+      "0.2"
+    ],
+    [
+      "data-gsap-trigger",
+      "#stage"
+    ],
+    [
+      "data-gsap-toggle-actions",
+      "play pause resume reset"
+    ],
+    [
+      "data-gsap-once",
+      "false"
+    ],
+    [
+      "data-gsap-markers",
+      ""
+    ],
+    [
+      "data-gsap-reduced",
+      "animate"
+    ]
+  ],
   "toggle-complete complete complete complete": [
     [
       "data-gsap",
@@ -1197,6 +1259,32 @@
     [
       "data-gsap-toggle-actions",
       "reverse none reverse reverse"
+    ]
+  ],
+  "zero-times": [
+    [
+      "data-gsap",
+      "fade"
+    ],
+    [
+      "data-gsap-delay",
+      "0"
+    ],
+    [
+      "data-gsap-duration",
+      "0"
+    ],
+    [
+      "data-gsap-repeat",
+      "0"
+    ],
+    [
+      "data-gsap-repeat-delay",
+      "0"
+    ],
+    [
+      "data-gsap-stagger",
+      "0"
     ]
   ]
 }

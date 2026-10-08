@@ -16,9 +16,11 @@ use crate::options::{Common, common_setters};
 /// assert_eq!(Position::WithPrevious.to_string(), "<");
 /// assert_eq!(Position::Overlap(Duration::from_millis(200)).to_string(), "-=0.2");
 /// ```
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Position {
-    /// After the previous tween ends (`>`, default).
+    /// After the most recent step ends (`>`).
+    /// With no position, a step starts at the end of the timeline.
+    /// The two differ after a `<` or an overlap step.
     After,
     /// When the previous tween starts (`<`).
     WithPrevious,
@@ -49,6 +51,8 @@ impl fmt::Display for Position {
 ///
 /// The timeline options (`play`, `scrub`, `pin`, `repeat`, ...) apply to the whole sequence.
 /// The `duration` and `ease` options are defaults for the children.
+/// On a child, `init.js` reads only the timing, stagger, split and position options.
+/// It ignores the ScrollTrigger options and `animate_on_reduced_motion` of a child.
 ///
 /// ```rust
 /// use std::time::Duration;

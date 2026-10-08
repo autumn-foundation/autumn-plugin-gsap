@@ -12,7 +12,8 @@ use crate::props::Props;
 use crate::timeline::Position;
 
 /// A preset start state. The element animates from this state to its CSS state.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
 pub enum Preset {
     /// Opacity 0.
     Fade,
@@ -44,10 +45,6 @@ pub enum Preset {
     BlurIn,
     /// Opacity 0, 3D rotation -90 degrees around the x axis.
     FlipX,
-    /// The start and end come from [`Props`].
-    Custom,
-    /// Scroll-linked vertical drift. See [`Gsap::parallax`].
-    Parallax,
 }
 
 impl Preset {
@@ -70,13 +67,11 @@ impl Preset {
             Self::RotateIn => "rotate-in",
             Self::BlurIn => "blur-in",
             Self::FlipX => "flip-x",
-            Self::Custom => "custom",
-            Self::Parallax => "parallax",
         }
     }
 
     /// All presets, in declaration order.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: &'static [Self] = &[
         Self::Fade,
         Self::FadeUp,
         Self::FadeDown,
@@ -92,13 +87,11 @@ impl Preset {
         Self::RotateIn,
         Self::BlurIn,
         Self::FlipX,
-        Self::Custom,
-        Self::Parallax,
     ];
 }
 
 /// Where a stagger starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum StaggerFrom {
     /// The first item (default).
     Start,
@@ -115,7 +108,7 @@ pub enum StaggerFrom {
 }
 
 /// The text unit that SplitText animates.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Split {
     /// Each character.
     Chars,
@@ -145,10 +138,10 @@ pub enum Split {
 #[derive(Debug, Clone, PartialEq)]
 #[must_use]
 pub struct Gsap {
-    preset: Preset,
+    /// The preset, or `None` for custom [`Props`].
+    preset: Option<Preset>,
     from: Option<Props>,
     to: Option<Props>,
-    parallax: Option<f32>,
     stagger: Option<Duration>,
     stagger_from: Option<StaggerFrom>,
     stagger_ease: Option<Ease>,
@@ -173,10 +166,9 @@ impl Gsap {
     /// Makes a tween for `preset` with default options.
     pub fn preset(preset: Preset) -> Self {
         Self {
-            preset,
+            preset: Some(preset),
             from: None,
             to: None,
-            parallax: None,
             stagger: None,
             stagger_from: None,
             stagger_ease: None,
@@ -220,35 +212,39 @@ impl Gsap {
         flip_x => FlipX;
     }
 
+    /// Makes a custom tween (`data-gsap="custom"`). Empty props write no JSON.
+    /// With no props, `init.js` does not animate the element.
+    fn custom(from: Option<Props>, to: Option<Props>) -> Self {
+        let mut g = Self::preset(Preset::Fade);
+        g.preset = None;
+        g.from = from.filter(|p| !p.is_empty());
+        g.to = to.filter(|p| !p.is_empty());
+        g
+    }
+
     /// Animates from `props` to the CSS state (`gsap.from`).
     pub fn from_props(props: Props) -> Self {
-        let mut g = Self::preset(Preset::Custom);
-        g.from = Some(props);
-        g
+        Self::custom(Some(props), None)
     }
 
     /// Animates from the CSS state to `props` (`gsap.to`).
     pub fn to_props(props: Props) -> Self {
-        let mut g = Self::preset(Preset::Custom);
-        g.to = Some(props);
-        g
+        Self::custom(None, Some(props))
     }
 
     /// Animates from `from` to `to` (`gsap.fromTo`).
     pub fn from_to(from: Props, to: Props) -> Self {
-        let mut g = Self::preset(Preset::Custom);
-        g.from = Some(from);
-        g.to = Some(to);
-        g
+        Self::custom(Some(from), Some(to))
     }
 
-    /// Scroll-linked vertical drift. The element moves `factor` × its height
-    /// while it crosses the viewport. A positive value moves down.
-    /// A value that is not finite writes no factor (`init.js` uses 0.3).
-    pub fn parallax(factor: f32) -> Self {
-        let mut g = Self::preset(Preset::Parallax);
-        g.parallax = Some(factor);
-        g
+    /// Scroll-linked vertical drift. See [`Parallax`].
+    pub const fn parallax(factor: f32) -> Parallax {
+        Parallax {
+            factor,
+            id: None,
+            class: None,
+            animate_reduced: false,
+        }
     }
 
     /// A fixed bar at the top of the page. It fills while the page scrolls.
@@ -300,6 +296,8 @@ impl Gsap {
     }
 
     /// Sets the start time in a [`Timeline`](crate::Timeline) (`data-gsap-position`).
+    /// With no position, the step starts at the end of the timeline.
+    /// Outside a timeline, `init.js` ignores the position.
     pub const fn position(mut self, position: Position) -> Self {
         self.position = Some(position);
         self
@@ -309,7 +307,8 @@ impl Gsap {
     /// Use them to write the attributes on your own element.
     #[must_use]
     pub fn attributes(&self) -> Vec<Attr> {
-        let mut out = vec![("data-gsap", self.preset.name().to_owned())];
+        let kind = self.preset.map_or("custom", Preset::name);
+        let mut out = vec![("data-gsap", kind.to_owned())];
         push_opt(
             &mut out,
             "data-gsap-from",
@@ -320,7 +319,6 @@ impl Gsap {
             "data-gsap-to",
             self.to.as_ref().map(Props::to_json),
         );
-        push_opt(&mut out, "data-gsap-parallax", self.parallax.and_then(num));
         self.common.push(&mut out);
         push_opt(&mut out, "data-gsap-stagger", self.stagger.map(secs));
         push_opt(
@@ -352,15 +350,90 @@ impl Gsap {
                 .to_owned()
             }),
         );
-        push_flag(&mut out, "data-gsap-split-mask", self.split_mask);
+        push_flag(
+            &mut out,
+            "data-gsap-split-mask",
+            self.split_mask && self.split.is_some(),
+        );
         push_opt(
             &mut out,
             "data-gsap-position",
-            self.position
-                .filter(|p| *p != Position::After)
-                .map(|p| p.to_string()),
+            self.position.map(|p| p.to_string()),
         );
         out
+    }
+}
+
+/// A scroll-linked vertical drift (`data-gsap="parallax"`).
+///
+/// The element moves `factor` × its own height while it crosses the viewport.
+/// A positive factor moves it down. A factor that is not finite writes no value
+/// (`init.js` then uses 0.3). Keep the factor small, for example from -0.5 to 0.5.
+///
+/// ```rust
+/// use autumn_plugin_gsap::{Gsap, Tag};
+/// use autumn_web::html;
+///
+/// let art = Gsap::parallax(-0.3).class("art").wrap_in(Tag::Figure, html! {});
+/// assert!(art.into_string().contains(r#"data-gsap-parallax="-0.3""#));
+/// ```
+#[derive(Debug, Clone, PartialEq)]
+#[must_use]
+pub struct Parallax {
+    factor: f32,
+    id: Option<String>,
+    class: Option<String>,
+    animate_reduced: bool,
+}
+
+impl Parallax {
+    /// Sets the `id` of the wrapper element. An empty string sets no `id`.
+    pub fn id(mut self, id: impl Into<String>) -> Self {
+        self.id = Some(id.into()).filter(|s| !s.is_empty());
+        self
+    }
+
+    /// Sets the `class` of the wrapper element. An empty string sets no `class`.
+    pub fn class(mut self, class: impl Into<String>) -> Self {
+        self.class = Some(class.into()).filter(|s| !s.is_empty());
+        self
+    }
+
+    /// Animates also when the user prefers reduced motion (`data-gsap-reduced="animate"`).
+    pub const fn animate_on_reduced_motion(mut self) -> Self {
+        self.animate_reduced = true;
+        self
+    }
+
+    /// The `data-gsap*` attributes, in a fixed order.
+    #[must_use]
+    pub fn attributes(&self) -> Vec<Attr> {
+        let mut out = vec![("data-gsap", "parallax".to_owned())];
+        push_opt(&mut out, "data-gsap-parallax", num(self.factor));
+        push_opt(
+            &mut out,
+            "data-gsap-reduced",
+            self.animate_reduced.then(|| "animate".to_owned()),
+        );
+        out
+    }
+
+    /// Puts `markup` in a `<div>` with the attributes.
+    #[allow(clippy::needless_pass_by_value)]
+    #[must_use]
+    pub fn wrap(self, markup: Markup) -> Markup {
+        self.wrap_in(crate::Tag::Div, markup)
+    }
+
+    /// Puts `markup` in a `tag` element with the `id`, `class` and animation attributes.
+    #[allow(clippy::needless_pass_by_value)]
+    #[must_use]
+    pub fn wrap_in(self, tag: crate::Tag, markup: Markup) -> Markup {
+        let mut attrs = Vec::new();
+        push_opt(&mut attrs, "id", self.id.clone());
+        push_opt(&mut attrs, "class", self.class.clone());
+        attrs.extend(self.attributes());
+        crate::attrs::wrap_el(tag, &attrs, &markup)
     }
 }
 
@@ -423,10 +496,32 @@ mod tests {
 
     #[test]
     fn defaults_write_only_the_preset() {
-        let g = Gsap::fade_up()
-            .play(Play::Scroll)
-            .duration(Duration::from_millis(800));
+        let g = Gsap::fade_up().play(Play::Scroll);
         assert_eq!(attrs(&g).len(), 1, "{:?}", attrs(&g));
+    }
+
+    #[test]
+    fn an_explicit_duration_is_always_written() {
+        // A timeline child must override the timeline default, also with 0.8 s.
+        let g = Gsap::fade().duration(Duration::from_millis(800));
+        assert!(has(&g, "data-gsap-duration", "0.8"));
+    }
+
+    #[test]
+    fn empty_strings_write_no_attribute() {
+        let g = Gsap::fade().id("").class("").trigger("");
+        assert_eq!(attrs(&g).len(), 1, "{:?}", attrs(&g));
+        let html = g.wrap(html! {}).into_string();
+        assert_eq!(html, r#"<div data-gsap="fade"></div>"#);
+    }
+
+    #[test]
+    fn empty_props_write_no_json() {
+        let g = Gsap::from_to(Props::new(), Props::new().x(f32::NAN));
+        assert_eq!(
+            attrs(&g),
+            vec![("data-gsap".to_owned(), "custom".to_owned())]
+        );
     }
 
     #[test]
@@ -545,19 +640,52 @@ mod tests {
 
     #[test]
     fn parallax_writes_the_factor() {
-        let g = Gsap::parallax(-0.25);
-        assert!(has(&g, "data-gsap", "parallax"));
-        assert!(has(&g, "data-gsap-parallax", "-0.25"));
-        let bad = Gsap::parallax(f32::NAN);
-        assert_eq!(attrs(&bad).len(), 1);
+        let p = Gsap::parallax(-0.25);
+        assert_eq!(
+            p.attributes(),
+            vec![
+                ("data-gsap", "parallax".to_owned()),
+                ("data-gsap-parallax", "-0.25".to_owned()),
+            ]
+        );
+        assert_eq!(Gsap::parallax(f32::NAN).attributes().len(), 1);
+    }
+
+    #[test]
+    fn parallax_has_only_the_options_that_init_js_reads() {
+        let html = Gsap::parallax(0.3)
+            .id("art")
+            .class("hero-art")
+            .animate_on_reduced_motion()
+            .wrap_in(crate::Tag::Figure, html! {})
+            .into_string();
+        assert_eq!(
+            html,
+            concat!(
+                r#"<figure id="art" class="hero-art" data-gsap="parallax" "#,
+                r#"data-gsap-parallax="0.3" data-gsap-reduced="animate"></figure>"#
+            )
+        );
+        assert!(
+            Gsap::parallax(0.3)
+                .wrap(html! {})
+                .into_string()
+                .starts_with("<div")
+        );
     }
 
     #[test]
     fn position_writes_an_attribute() {
         let g = Gsap::fade().position(Position::WithPrevious);
         assert!(has(&g, "data-gsap-position", "<"));
+        // `>` is not the GSAP default (the end of the timeline), so it is written.
         let after = Gsap::fade().position(Position::After);
-        assert!(!attrs(&after).iter().any(|(k, _)| k == "data-gsap-position"));
+        assert!(has(&after, "data-gsap-position", ">"));
+        assert!(
+            !attrs(&Gsap::fade())
+                .iter()
+                .any(|(k, _)| k == "data-gsap-position")
+        );
     }
 
     #[test]

@@ -53,26 +53,38 @@ pub const GSAP_VERSION: &str = "3.15.0";
 /// The GSAP license of the vendored files. The plugin code is Apache-2.0.
 pub const GSAP_LICENSE: &str = "https://gsap.com/standard-license";
 
-/// The upstream source of each vendored file, with its pinned `sha384` SRI hash.
+/// One vendored upstream file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[non_exhaustive]
+pub struct UpstreamFile {
+    /// The logical path in [`GSAP_ASSETS`].
+    pub path: &'static str,
+    /// The source URL.
+    pub source: &'static str,
+    /// The pinned `sha384` SRI hash of the upstream bytes.
+    pub integrity: &'static str,
+}
+
+/// The vendored upstream files, with their pinned hashes.
 ///
 /// The `<script>` tags do not read these values. A test checks that the
 /// embedded bytes still match them.
-pub const GSAP_UPSTREAM: [(&str, &str, &str); 3] = [
-    (
-        GSAP_JS,
-        "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js",
-        "sha384-XmJ9SoHtVOHoQUcKvFAzVXwdkKo1Ie3bhmSoIAkcdsHGaIrVJIkmozyq0FJeb/Ly",
-    ),
-    (
-        SCROLL_TRIGGER_JS,
-        "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js",
-        "sha384-wl5TeDVvOWt30Pbf8aSo2ZrzsOjddu3avOBvHe+p+OhJt9gP6w9YXmDkN5DK2/dF",
-    ),
-    (
-        SPLIT_TEXT_JS,
-        "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js",
-        "sha384-SWJ0lLVRoipvHh59xj0pL7uC7Ih51F+5smaFtrG+2nr+TlDZU5SYJHmxfolbeNTr",
-    ),
+pub const GSAP_UPSTREAM: &[UpstreamFile] = &[
+    UpstreamFile {
+        path: GSAP_JS,
+        source: "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js",
+        integrity: "sha384-XmJ9SoHtVOHoQUcKvFAzVXwdkKo1Ie3bhmSoIAkcdsHGaIrVJIkmozyq0FJeb/Ly",
+    },
+    UpstreamFile {
+        path: SCROLL_TRIGGER_JS,
+        source: "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/ScrollTrigger.min.js",
+        integrity: "sha384-wl5TeDVvOWt30Pbf8aSo2ZrzsOjddu3avOBvHe+p+OhJt9gP6w9YXmDkN5DK2/dF",
+    },
+    UpstreamFile {
+        path: SPLIT_TEXT_JS,
+        source: "https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/SplitText.min.js",
+        integrity: "sha384-SWJ0lLVRoipvHh59xj0pL7uC7Ih51F+5smaFtrG+2nr+TlDZU5SYJHmxfolbeNTr",
+    },
 ];
 
 #[cfg(test)]
@@ -126,9 +138,10 @@ mod tests {
 
     #[test]
     fn vendored_files_match_the_pinned_upstream_hashes() {
-        for (path, source, pin) in GSAP_UPSTREAM {
+        for f in GSAP_UPSTREAM {
+            let (path, source) = (f.path, f.source);
             let asset = GSAP_ASSETS.get(path).expect("bundled");
-            assert_eq!(sri(asset.bytes()), pin, "{path}");
+            assert_eq!(sri(asset.bytes()), f.integrity, "{path}");
             assert!(
                 source.contains(&format!("gsap@{GSAP_VERSION}/dist/{path}")),
                 "{source}"
@@ -138,7 +151,7 @@ mod tests {
 
     #[test]
     fn vendored_files_keep_the_upstream_license_header() {
-        for (path, _, _) in GSAP_UPSTREAM {
+        for path in GSAP_UPSTREAM.iter().map(|f| f.path) {
             let bytes = GSAP_ASSETS.get(path).expect("bundled").bytes();
             let head = String::from_utf8_lossy(&bytes[..300]);
             assert!(head.contains(GSAP_VERSION), "{path}: {head}");
@@ -183,10 +196,11 @@ mod tests {
             serde_json::from_str(include_str!("../assets/manifest.json")).expect("json");
         assert_eq!(manifest["version"], GSAP_VERSION);
         assert_eq!(manifest["license"], GSAP_LICENSE);
-        for (path, source, pin) in GSAP_UPSTREAM {
+        for f in GSAP_UPSTREAM {
+            let path = f.path;
             let entry = &manifest["files"][path];
-            assert_eq!(entry["source"], source, "{path}");
-            assert_eq!(entry["integrity"], pin, "{path}");
+            assert_eq!(entry["source"], f.source, "{path}");
+            assert_eq!(entry["integrity"], f.integrity, "{path}");
             let bytes = GSAP_ASSETS.get(path).expect("bundled").bytes().len();
             assert_eq!(entry["bytes"], bytes, "{path}");
         }

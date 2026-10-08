@@ -14,7 +14,7 @@ use crate::fmt::num;
 /// let p = Props::new().x(-40.0).opacity(0.0);
 /// assert_eq!(p.to_json(), r#"{"x":-40,"opacity":0}"#);
 /// ```
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default)]
 #[must_use]
 pub struct Props {
     values: Vec<(&'static str, f32)>,
@@ -117,6 +117,14 @@ impl Props {
     }
 }
 
+/// Two sets are equal when they hold the same values. The order does not matter.
+impl PartialEq for Props {
+    fn eq(&self, other: &Self) -> bool {
+        self.values.len() == other.values.len()
+            && self.values.iter().all(|v| other.values.contains(v))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -156,6 +164,13 @@ mod tests {
         let list = &js[start..start + js[start..].find("];").expect("end")];
         let names: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
         assert_eq!(names, PROP_NAMES);
+    }
+
+    #[test]
+    fn equality_ignores_the_order() {
+        assert_eq!(Props::new().x(1.0).y(2.0), Props::new().y(2.0).x(1.0));
+        assert_ne!(Props::new().x(1.0), Props::new().x(2.0));
+        assert_ne!(Props::new().x(1.0), Props::new().x(1.0).y(0.0));
     }
 
     #[test]

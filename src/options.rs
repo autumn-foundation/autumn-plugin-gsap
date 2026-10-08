@@ -8,10 +8,11 @@ use crate::fmt::secs;
 use crate::scroll::{Play, ScrollPos, Scrub, ToggleActions};
 
 /// The play time that `init.js` uses when no duration is set.
+#[cfg(test)]
 pub(crate) const DEFAULT_DURATION: Duration = Duration::from_millis(800);
 
 /// How many times an animation plays again after the first play.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Repeat {
     /// Play again `n` more times.
     Times(u32),
@@ -62,11 +63,7 @@ impl Common {
             (self.play == Play::Load).then(|| "load".to_owned()),
         );
         push_opt(out, "data-gsap-delay", self.delay.map(secs));
-        push_opt(
-            out,
-            "data-gsap-duration",
-            self.duration.filter(|d| *d != DEFAULT_DURATION).map(secs),
-        );
+        push_opt(out, "data-gsap-duration", self.duration.map(secs));
         push_opt(out, "data-gsap-ease", self.ease.map(|e| e.to_string()));
         push_opt(
             out,
@@ -106,6 +103,7 @@ impl Common {
 macro_rules! common_setters {
     () => {
         /// Starts on scroll (default) or on load. See [`Play`](crate::Play).
+        /// With [`Play::Load`](crate::Play::Load), `init.js` ignores the ScrollTrigger options.
         pub const fn play(mut self, play: crate::Play) -> Self {
             self.common.play = play;
             self
@@ -118,12 +116,15 @@ macro_rules! common_setters {
         }
 
         /// Sets the play time (`data-gsap-duration`). The default is 0.8 s.
+        /// On a [`Timeline`](crate::Timeline), this is the default for each step.
+        /// A step with no duration uses the timeline value. Times have millisecond precision.
         pub const fn duration(mut self, duration: std::time::Duration) -> Self {
             self.common.duration = Some(duration);
             self
         }
 
         /// Sets the ease (`data-gsap-ease`). The default is `power3.out`.
+        /// On a [`Timeline`](crate::Timeline), this is the default for each step.
         pub const fn ease(mut self, ease: crate::Ease) -> Self {
             self.common.ease = Some(ease);
             self
@@ -149,8 +150,9 @@ macro_rules! common_setters {
 
         /// Uses another element as the ScrollTrigger trigger (`data-gsap-trigger`).
         /// The value is a CSS selector. An unknown selector uses the element itself.
+        /// An empty string sets no trigger.
         pub fn trigger(mut self, selector: impl Into<String>) -> Self {
-            self.common.trigger = Some(selector.into());
+            self.common.trigger = Some(selector.into()).filter(|s| !s.is_empty());
             self
         }
 
@@ -172,8 +174,10 @@ macro_rules! common_setters {
             self
         }
 
-        /// Plays again each time the trigger enters (`data-gsap-once="false"`).
-        /// The default plays one time.
+        /// Keeps the ScrollTrigger after the first play (`data-gsap-once="false"`).
+        /// The animation plays forward on enter and backward on leave back
+        /// (`play none none reverse`). The default plays one time.
+        /// [`toggle_actions`](Self::toggle_actions) and [`scrub`](Self::scrub) replace this option.
         pub const fn replay(mut self) -> Self {
             self.common.replay = true;
             self
@@ -181,12 +185,14 @@ macro_rules! common_setters {
 
         /// Links the progress to the scroll position (`data-gsap-scrub`).
         /// With scrub, the default range is `top bottom` to `bottom top`.
+        /// Scrub ignores [`toggle_actions`](Self::toggle_actions) and [`replay`](Self::replay).
         pub const fn scrub(mut self, scrub: crate::Scrub) -> Self {
             self.common.scrub = Some(scrub);
             self
         }
 
         /// Pins the trigger element while the animation is active (`data-gsap-pin`).
+        /// `init.js` refuses a pin when the trigger is outside the element.
         pub const fn pin(mut self) -> Self {
             self.common.pin = true;
             self
@@ -198,15 +204,15 @@ macro_rules! common_setters {
             self
         }
 
-        /// Sets the `id` of the wrapper element.
+        /// Sets the `id` of the wrapper element. An empty string sets no `id`.
         pub fn id(mut self, id: impl Into<String>) -> Self {
-            self.common.id = Some(id.into());
+            self.common.id = Some(id.into()).filter(|s| !s.is_empty());
             self
         }
 
-        /// Sets the `class` of the wrapper element.
+        /// Sets the `class` of the wrapper element. An empty string sets no `class`.
         pub fn class(mut self, class: impl Into<String>) -> Self {
-            self.common.class = Some(class.into());
+            self.common.class = Some(class.into()).filter(|s| !s.is_empty());
             self
         }
 

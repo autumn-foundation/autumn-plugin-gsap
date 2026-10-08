@@ -3,6 +3,7 @@
 use std::time::Duration;
 
 /// Writes `d` as seconds with millisecond precision (`150ms` → `"0.15"`).
+/// It drops the part below one millisecond.
 pub(crate) fn secs(d: Duration) -> String {
     let whole = d.as_secs();
     let millis = d.subsec_millis();
