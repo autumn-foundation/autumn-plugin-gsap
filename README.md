@@ -1,6 +1,6 @@
 # autumn-plugin-gsap
 
-[GSAP](https://gsap.com) animations for [Autumn](https://github.com/autumn-foundation/autumn) 0.8 apps.
+[GSAP](https://gsap.com) animations for [Autumn](https://github.com/autumn-foundation/autumn) 0.9 apps.
 You write Rust and Maud. You need no npm, no bundler and no JavaScript.
 
 - The crate includes GSAP 3.15.0, ScrollTrigger and SplitText.

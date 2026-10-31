@@ -39,12 +39,14 @@ const fn ms(n: u64) -> Duration {
 
 #[autumn_web::main]
 async fn main() {
-    autumn_web::app()
-        .plugin(GsapPlugin::new())
-        .embedded_static(&STATIC)
-        .routes(autumn_web::routes![index, about, more, swap, plain])
-        .run()
-        .await;
+    Box::pin(
+        autumn_web::app()
+            .plugin(GsapPlugin::new())
+            .embedded_static(&STATIC)
+            .routes(autumn_web::routes![index, about, more, swap, plain])
+            .run(),
+    )
+    .await;
 }
 
 fn layout(content: &Markup) -> Markup {
