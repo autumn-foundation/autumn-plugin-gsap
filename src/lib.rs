@@ -65,3 +65,8 @@ pub use script::{gsap_script, gsap_stylesheet};
 pub use scroll::{Action, Edge, Play, ScrollPos, Scrub, ToggleActions};
 pub use timeline::{Position, Timeline};
 pub use tween::{Gsap, Parallax, Preset, Split, StaggerFrom};
+
+/// Compiles the Rust snippets of the README as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../README.md")]
+pub struct ReadmeDoctests;

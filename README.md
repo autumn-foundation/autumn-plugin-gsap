@@ -14,18 +14,34 @@ You write Rust and Maud. You need no npm, no bundler and no JavaScript.
 
 1. Add the plugin.
 
-   ```rust
+   ```rust,no_run
    use autumn_plugin_gsap::GsapPlugin;
+   use autumn_web::prelude::*;
 
-   autumn_web::app().plugin(GsapPlugin::new()).run().await;
+   #[get("/")]
+   async fn index() -> &'static str {
+       "Hello"
+   }
+
+   #[autumn_web::main]
+   async fn main() {
+       autumn_web::app()
+           .plugin(GsapPlugin::new())
+           .routes(routes![index])
+           .run()
+           .await;
+   }
    ```
 
 2. Put the tags in the page `<head>`. The script tags have the `defer` attribute and SRI hashes.
 
    ```rust
    use autumn_plugin_gsap::{gsap_script, gsap_stylesheet};
+   use autumn_web::prelude::*;
 
-   html! { head { (gsap_script()) (gsap_stylesheet()) } }
+   fn head() -> Markup {
+       html! { head { (gsap_script()) (gsap_stylesheet()) } }
+   }
    ```
 
 3. Animate.
@@ -33,19 +49,22 @@ You write Rust and Maud. You need no npm, no bundler and no JavaScript.
    ```rust
    use std::time::Duration;
    use autumn_plugin_gsap::{Ease, EaseDir, Gsap, Split, Tag};
+   use autumn_web::prelude::*;
 
-   html! {
-       // A tween on a wrapper element.
-       (Gsap::fade_up().delay(Duration::from_millis(100)).class("card").wrap(html! {
-           h2 { "Hello" }
-       }))
-       // SplitText on the heading itself. The heading gets the aria-label.
-       (Gsap::fade_up()
-           .split(Split::Chars)
-           .ease(Ease::Expo(EaseDir::Out))
-           .wrap_in(Tag::H1, html! { "Big title" }))
-       // Raw attributes on your own element.
-       p data-gsap="fade" data-gsap-delay="0.2" { "World" }
+   fn cards() -> Markup {
+       html! {
+           // A tween on a wrapper element.
+           (Gsap::fade_up().delay(Duration::from_millis(100)).class("card").wrap(html! {
+               h2 { "Hello" }
+           }))
+           // SplitText on the heading itself. The heading gets the aria-label.
+           (Gsap::fade_up()
+               .split(Split::Chars)
+               .ease(Ease::Expo(EaseDir::Out))
+               .wrap_in(Tag::H1, html! { "Big title" }))
+           // Raw attributes on your own element.
+           p data-gsap="fade" data-gsap-delay="0.2" { "World" }
+       }
    }
    ```
 
@@ -57,10 +76,13 @@ keeps split masks from cutting letters, and styles `Gsap::scroll_progress()`.
 ### Tweens
 
 ```rust
+use std::time::Duration;
 use autumn_plugin_gsap::{Gsap, Props, StaggerFrom};
 
 Gsap::zoom_in();                                                 // a preset
-Gsap::scale().stagger(ms(80)).stagger_from(StaggerFrom::Center); // the children, one by one
+Gsap::scale()                                                    // the children, one by one
+    .stagger(Duration::from_millis(80))
+    .stagger_from(StaggerFrom::Center);
 Gsap::from_props(Props::new().x(-120.0).rotation(-8.0));         // gsap.from
 Gsap::to_props(Props::new().x_percent(-60.0));                   // gsap.to
 Gsap::from_to(Props::new().scale(0.0), Props::new().scale(1.0)); // gsap.fromTo
@@ -77,12 +99,13 @@ By default, a tween plays one time when its element top is at 85% of the viewpor
 The start is never after the last scroll position, so content at the page end also plays.
 
 ```rust
+use std::time::Duration;
 use autumn_plugin_gsap::{Edge, Gsap, Play, ScrollPos, Scrub};
 
 Gsap::fade().play(Play::Load);                                  // no ScrollTrigger
 Gsap::fade().start(ScrollPos::new(Edge::Top, Edge::Center));    // start: "top center"
 Gsap::fade().replay();                                          // forward on enter, backward on leave back
-Gsap::fade().scrub(Scrub::Smooth(ms(500))).pin();               // link to the scroll, pin
+Gsap::fade().scrub(Scrub::Smooth(Duration::from_millis(500))).pin(); // link to the scroll, pin
 Gsap::fade().trigger("#hero").markers();                        // another trigger, debug markers
 Gsap::parallax(0.3);                                            // drift 30% of its height
 Gsap::scroll_progress();                                        // a page progress bar
@@ -94,12 +117,18 @@ A `Timeline` plays its `data-gsap` children in document order, as one sequence.
 `Position` sets where each step starts. With no position, a step starts at the end of the timeline.
 
 ```rust
+use std::time::Duration;
 use autumn_plugin_gsap::{Gsap, Position, Tag, Timeline};
+use autumn_web::prelude::*;
 
-Timeline::new().wrap_in(Tag::Section, html! {
-    (Gsap::fade_up().wrap_in(Tag::H1, html! { "Title" }))
-    (Gsap::fade().position(Position::Overlap(ms(300))).wrap(html! { p { "Text" } }))
-})
+fn intro() -> Markup {
+    Timeline::new().wrap_in(Tag::Section, html! {
+        (Gsap::fade_up().wrap_in(Tag::H1, html! { "Title" }))
+        (Gsap::fade()
+            .position(Position::Overlap(Duration::from_millis(300)))
+            .wrap(html! { p { "Text" } }))
+    })
+}
 ```
 
 - The timeline options (`play`, `scrub`, `pin`, `repeat`, ...) apply to the full sequence.
@@ -121,9 +150,14 @@ Timeline::new().wrap_in(Tag::Section, html! {
 - After each `htmx:afterSettle`, it refreshes the ScrollTrigger positions.
 
 ```rust
+use std::time::Duration;
+use autumn_plugin_gsap::Gsap;
+use autumn_web::prelude::*;
+
 #[get("/more")]
 async fn more() -> Markup {
-    Gsap::slide_up().stagger(ms(90)).wrap(rows())
+    let rows = html! { @for n in 1..=3 { div { "Row " (n) } } };
+    Gsap::slide_up().stagger(Duration::from_millis(90)).wrap(rows)
 }
 ```
 

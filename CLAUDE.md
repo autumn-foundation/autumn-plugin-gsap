@@ -16,6 +16,8 @@ Autumn plugin for GSAP. Rust crate plus one JS file (`assets/init.js`).
 
 ## Rules
 
+- README Rust snippets are doctests. Make them compile; use `no_run`, not `ignore`.
+  `tests/doc_snippets.rs` checks the TOML snippets and the version pins in the docs.
 - Write tests first (red, green, refactor).
 - A new attribute needs a parser in `init.js` (`PARSERS`) and a README row.
   When Rust writes it, it also needs a builder method and a golden case.
